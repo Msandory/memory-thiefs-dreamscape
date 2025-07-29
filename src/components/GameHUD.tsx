@@ -1,7 +1,7 @@
+import { useEffect } from "react";
 import memoryOrbImg from "@/assets/memory-orb.jpg";
-
 import { Button } from "@/components/ui/button";
-import { Play, Pause } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX } from "lucide-react";
 
 interface GameHUDProps {
   memoriesCollected: number;
@@ -11,9 +11,34 @@ interface GameHUDProps {
   gameMessage: string;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  muted: boolean;
+  onToggleMute: () => void;
 }
 
-export const GameHUD = ({ memoriesCollected, totalMemories, score, playerName, gameMessage, isPlaying, onTogglePlay }: GameHUDProps) => {
+export const GameHUD = ({
+  memoriesCollected,
+  totalMemories,
+  score,
+  playerName,
+  gameMessage,
+  isPlaying,
+  onTogglePlay,
+  muted,
+  onToggleMute
+}: GameHUDProps) => {
+  // Handle M key for mute toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'm') {
+        onToggleMute();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onToggleMute]);
+
   return (
     <div className="absolute inset-0 pointer-events-none">
       {/* Top HUD */}
@@ -36,15 +61,26 @@ export const GameHUD = ({ memoriesCollected, totalMemories, score, playerName, g
           </div>
         </div>
 
-        {/* Center - Pause/Play Button */}
-        <Button
-          variant="ethereal"
-          size="lg"
-          onClick={onTogglePlay}
-          className="bg-card/50 backdrop-blur-sm border border-primary/30"
-        >
-          {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-        </Button>
+        {/* Center - Pause/Play and Mute Buttons */}
+        <div className="flex gap-2">
+          <Button
+            variant="ethereal"
+            size="lg"
+            onClick={onTogglePlay}
+            className="bg-card/50 backdrop-blur-sm border border-primary/30"
+          >
+            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+          </Button>
+          <Button
+            variant="ethereal"
+            size="lg"
+            onClick={onToggleMute}
+            className="bg-card/50 backdrop-blur-sm border border-primary/30"
+            title={muted ? "Unmute (M)" : "Mute (M)"}
+          >
+            {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+          </Button>
+        </div>
 
         {/* Right side - Player Name and Mini Map */}
         <div className="flex gap-3 items-center">

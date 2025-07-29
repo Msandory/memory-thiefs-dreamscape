@@ -1,15 +1,171 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import { Howl } from "howler";
 
 interface GameCanvasProps {
   isActive: boolean;
   onGameStateChange: (state: 'playing' | 'paused' | 'gameOver' | 'victory') => void;
   memoriesCollected: number;
   onMemoryCollected: () => void;
+  playerName: string;
+  onPlayerNameLoaded: (name: string) => void;
+  muted: boolean;
 }
 
-export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onMemoryCollected }: GameCanvasProps) => {
+interface Guardian {
+  x: number;
+  y: number;
+  direction: number;
+  patrol: { start: number; end: number };
+  alert: boolean;
+}
+
+interface SavedGameState {
+  player: { x: number; y: number; size: number };
+  memoryOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[];
+  guardians: Guardian[];
+  memoriesCollected: number;
+  playerName: string;
+}
+
+export const GameCanvas = forwardRef(({
+  isActive,
+  onGameStateChange,
+  memoriesCollected,
+  onMemoryCollected,
+  playerName,
+  onPlayerNameLoaded,
+  muted
+}: GameCanvasProps, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
+  const soundsRef = useRef<{
+    orbCollect: Howl;
+    guardianAlert: Howl;
+    gameOver: Howl;
+    victory: Howl;
+    background: Howl;
+  } | null>(null);
+
+  // Initialize default state
+  const defaultOrbs = [
+    { x: 200, y: 150, collected: false, pulse: 0, collectingTime: 0 },
+    { x: 600, y: 200, collected: false, pulse: 0, collectingTime: 0 },
+    { x: 300, y: 450, collected: false, pulse: 0, collectingTime: 0 },
+    { x: 700, y: 400, collected: false, pulse: 0, collectingTime: 0 },
+    { x: 150, y: 500, collected: false, pulse: 0, collectingTime: 0 },
+  ];
+  const defaultGuardians = [
+    { x: 500, y: 100, direction: 1, patrol: { start: 450, end: 550 }, alert: false },
+    { x: 250, y: 350, direction: 1, patrol: { start: 200, end: 400 }, alert: false },
+  ];
+  const defaultPlayer = { x: 400, y: 300, size: 20 };
+  const defaultPlayerName = playerName || "Player";
+
+  // Load saved state from localStorage, if available
+  const savedState = localStorage.getItem('gameState');
+  const initialState: SavedGameState = savedState
+    ? JSON.parse(savedState)
+    : {
+        player: defaultPlayer,
+        memoryOrbs: defaultOrbs,
+        guardians: defaultGuardians,
+        memoriesCollected: 0,
+        playerName: defaultPlayerName,
+      };
+
+  const player = useRef(initialState.player);
+  const memoryOrbs = useRef(initialState.memoryOrbs);
+  const guardians = useRef<Guardian[]>(initialState.guardians);
+  const previousMemoryCount = useRef(initialState.memoriesCollected);
+  const alertedGuardians = useRef<Set<number>>(new Set()); // Track alerted guardians
+
+  // Initialize sounds
+  useEffect(() => {
+    soundsRef.current = {
+      orbCollect: new Howl({
+        src: ['/assets/audio/orb-collect.mp3'],
+        volume: 0.5,
+      }),
+      guardianAlert: new Howl({
+        src: ['/assets/audio/guardian-alert.mp3'],
+        volume: 0.6,
+      }),
+      gameOver: new Howl({
+        src: ['/assets/audio/game-over.mp3'],
+        volume: 0.7,
+      }),
+      victory: new Howl({
+        src: ['/assets/audio/victory.mp3'],
+        volume: 0.7,
+      }),
+      background: new Howl({
+        src: ['/assets/audio/background-music.mp3'],
+        loop: true,
+        volume: 0.3,
+      }),
+    };
+
+    // Play background music if not muted
+    if (!muted) {
+      soundsRef.current.background.play();
+    }
+
+    // Cleanup sounds on unmount
+    return () => {
+      if (soundsRef.current) {
+        Object.values(soundsRef.current).forEach(sound => sound.unload());
+        soundsRef.current = null;
+      }
+    };
+  }, []);
+
+  // Handle mute state changes
+  useEffect(() => {
+    if (soundsRef.current) {
+      if (muted) {
+        soundsRef.current.background.pause();
+      } else {
+        soundsRef.current.background.play();
+      }
+    }
+  }, [muted]);
+
+  // Notify parent of loaded playerName
+  useEffect(() => {
+    onPlayerNameLoaded(initialState.playerName);
+  }, [onPlayerNameLoaded]);
+
+  // Function to save game state to localStorage
+  const saveGameState = () => {
+    const state: SavedGameState = {
+      player: { ...player.current },
+      memoryOrbs: memoryOrbs.current.map(orb => ({ ...orb })),
+      guardians: guardians.current.map(guard => ({ ...guard })),
+      memoriesCollected: memoryOrbs.current.filter(orb => orb.collected).length,
+      playerName,
+    };
+    localStorage.setItem('gameState', JSON.stringify(state));
+  };
+
+  // Function to reset game state
+  const resetGameState = () => {
+    player.current = { ...defaultPlayer };
+    memoryOrbs.current = defaultOrbs.map(orb => ({ ...orb }));
+    guardians.current = defaultGuardians.map(guard => ({ ...guard }));
+    previousMemoryCount.current = 0;
+    alertedGuardians.current.clear();
+    localStorage.removeItem('gameState');
+    onGameStateChange('playing');
+    // Restart background music if not muted
+    if (soundsRef.current && !muted) {
+      soundsRef.current.background.stop().play();
+    }
+  };
+
+  // Expose resetGameState to parent via ref
+  useImperativeHandle(ref, () => ({
+    reset: resetGameState,
+  }));
 
   useEffect(() => {
     if (!canvasRef.current || !isActive) return;
@@ -18,33 +174,21 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
     canvas.width = 800;
     canvas.height = 600;
 
     let animationId: number;
     let roomShift = { x: 0, y: 0, intensity: 0 };
-    let previousMemoryCount = memoriesCollected;
-    let player = { x: 400, y: 300, size: 20 };
-    let memoryOrbs = [
-      { x: 200, y: 150, collected: false, pulse: 0, collectingTime: 0 },
-      { x: 600, y: 200, collected: false, pulse: 0, collectingTime: 0 },
-      { x: 300, y: 450, collected: false, pulse: 0, collectingTime: 0 },
-      { x: 700, y: 400, collected: false, pulse: 0, collectingTime: 0 },
-      { x: 150, y: 500, collected: false, pulse: 0, collectingTime: 0 },
-    ];
-    let guardians = [
-      { x: 500, y: 100, direction: 1, patrol: { start: 450, end: 550 } },
-      { x: 250, y: 350, direction: 1, patrol: { start: 200, end: 400 } },
-    ];
 
     const keys: { [key: string]: boolean } = {};
 
-    // Event listeners
     const handleKeyDown = (e: KeyboardEvent) => {
       keys[e.key.toLowerCase()] = true;
       if (e.key === 'Escape') {
         onGameStateChange('paused');
+      }
+      if (e.key.toLowerCase() === 'r') {
+        resetGameState();
       }
     };
 
@@ -58,21 +202,35 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
     const render = () => {
       if (!ctx) return;
 
-      // Check for memory collection to trigger room shift
-      const currentMemoryCount = memoryOrbs.filter(orb => orb.collected).length;
-      if (currentMemoryCount > previousMemoryCount) {
+      const orbs = memoryOrbs.current;
+      const guards = guardians.current;
+
+      const currentMemoryCount = orbs.filter(orb => orb.collected).length;
+      if (currentMemoryCount > previousMemoryCount.current) {
         roomShift.intensity = 1.0;
-        previousMemoryCount = currentMemoryCount;
+        previousMemoryCount.current = currentMemoryCount;
+
+        // Reset guards to patrol state
+        guards.forEach(g => {
+          g.alert = false;
+        });
+        alertedGuardians.current.clear();
+
+        // Play orb collect sound
+        if (soundsRef.current && !muted) {
+          soundsRef.current.orbCollect.play();
+        }
+
+        // Save game state after orb collection
+        saveGameState();
       }
 
-      // Update room shift effect
       if (roomShift.intensity > 0) {
         roomShift.intensity -= 0.02;
         roomShift.x = (Math.random() - 0.5) * roomShift.intensity * 20;
         roomShift.y = (Math.random() - 0.5) * roomShift.intensity * 20;
       }
 
-      // Apply room shift transform
       ctx.save();
       ctx.translate(roomShift.x, roomShift.y);
 
@@ -112,21 +270,19 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
       ctx.restore();
 
       // Update and render memory orbs
-      memoryOrbs.forEach((orb, index) => {
+      orbs.forEach((orb) => {
         if (orb.collected) return;
 
         orb.pulse += 0.05;
-        
-        // Check collision with player
-        const dx = player.x - orb.x;
-        const dy = player.y - orb.y;
+
+        const dx = player.current.x - orb.x;
+        const dy = player.current.y - orb.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance < player.size && orb.collectingTime === 0) {
-          orb.collectingTime = 1; // Start collection process
+
+        if (distance < player.current.size && orb.collectingTime === 0) {
+          orb.collectingTime = 1;
         }
-        
-        // Handle collection animation
+
         if (orb.collectingTime > 0) {
           orb.collectingTime += 0.03;
           if (orb.collectingTime >= 1) {
@@ -135,7 +291,7 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
             return;
           }
         }
-        
+
         const glowSize = 15 + Math.sin(orb.pulse) * 5;
         const alpha = orb.collectingTime > 0 ? 1 - orb.collectingTime : 1;
         
@@ -155,24 +311,47 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
       });
 
       // Update and render guardians
-      const collectedCount = memoryOrbs.filter(orb => orb.collected).length;
-      const shouldChase = collectedCount > 0;
-      
-      guardians.forEach(guardian => {
-        if (shouldChase) {
-          // Chase player
-          const dx = player.x - guardian.x;
-          const dy = player.y - guardian.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          if (distance > 0) {
-            const speed = 1.5;
-            guardian.x += (dx / distance) * speed;
-            guardian.y += (dy / distance) * speed;
+      guards.forEach((guardian, index) => {
+        // Check if player is within vision radius (100px)
+        const dxToPlayer = player.current.x - guardian.x;
+        const dyToPlayer = player.current.y - guardian.y;
+        const distanceToPlayer = Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer);
+        const isPlayerInRange = distanceToPlayer < 100;
+
+        // Set alert state based on player proximity
+        const wasAlert = guardian.alert;
+        guardian.alert = isPlayerInRange;
+
+        // Play guardian alert sound once per alert transition
+        if (!wasAlert && guardian.alert && !alertedGuardians.current.has(index)) {
+          alertedGuardians.current.add(index);
+          if (soundsRef.current && !muted) {
+            soundsRef.current.guardianAlert.play();
+          }
+        } else if (wasAlert && !guardian.alert) {
+          alertedGuardians.current.delete(index);
+        }
+
+        // Calculate speed based on collected orbs (increase by 0.5 per orb)
+        const collectedCount = orbs.filter(orb => orb.collected).length;
+        const baseSpeed = guardian.alert ? 3 : 1.5;
+        const speed = baseSpeed + collectedCount * 0.5;
+
+        if (guardian.alert) {
+          // Chase player if within vision radius
+          if (distanceToPlayer > 5) {
+            guardian.x += (dxToPlayer / distanceToPlayer) * speed;
+            guardian.y += (dyToPlayer / distanceToPlayer) * speed;
+
+            // Wrap around canvas boundaries when chasing
+            if (guardian.x < 10) guardian.x += 780;
+            else if (guardian.x > 790) guardian.x -= 780;
+            if (guardian.y < 10) guardian.y += 580;
+            else if (guardian.y > 590) guardian.y -= 580;
           }
         } else {
-          // Normal patrol behavior
-          guardian.x += guardian.direction * 1;
+          // Normal patrol
+          guardian.x += guardian.direction * speed;
           if (guardian.x >= guardian.patrol.end || guardian.x <= guardian.patrol.start) {
             guardian.direction *= -1;
           }
@@ -182,7 +361,7 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
         const guardianGradient = ctx.createRadialGradient(guardian.x, guardian.y, 0, guardian.x, guardian.y, 25);
         guardianGradient.addColorStop(0, 'hsl(340, 60%, 60%)');
         guardianGradient.addColorStop(1, 'transparent');
-        
+
         ctx.fillStyle = guardianGradient;
         ctx.beginPath();
         ctx.arc(guardian.x, guardian.y, 25, 0, Math.PI * 2);
@@ -194,40 +373,54 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
         ctx.arc(guardian.x, guardian.y, 12, 0, Math.PI * 2);
         ctx.fill();
 
-        // Check collision with player
-        const dx = player.x - guardian.x;
-        const dy = player.y - guardian.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance < 30) {
+        // Draw guardian vision cone
+        const visionRadius = 100;
+        const visionGradient = ctx.createRadialGradient(guardian.x, guardian.y, 0, guardian.x, guardian.y, visionRadius);
+        visionGradient.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
+        visionGradient.addColorStop(1, 'rgba(255, 0, 0, 0.15)');
+
+        ctx.fillStyle = visionGradient;
+        ctx.beginPath();
+        ctx.arc(guardian.x, guardian.y, visionRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Check collision with player (game over condition)
+        if (distanceToPlayer < 30) {
+          saveGameState();
           onGameStateChange('gameOver');
+          if (soundsRef.current && !muted) {
+            soundsRef.current.gameOver.play();
+          }
         }
       });
 
       // Handle player movement (respect boundaries)
       const speed = 3;
-      if (keys['w'] || keys['arrowup']) player.y = Math.max(20 + player.size, player.y - speed);
-      if (keys['s'] || keys['arrowdown']) player.y = Math.min(580 - player.size, player.y + speed);
-      if (keys['a'] || keys['arrowleft']) player.x = Math.max(20 + player.size, player.x - speed);
-      if (keys['d'] || keys['arrowright']) player.x = Math.min(780 - player.size, player.x + speed);
+      if (keys['w'] || keys['arrowup']) player.current.y = Math.max(20 + player.current.size, player.current.y - speed);
+      if (keys['s'] || keys['arrowdown']) player.current.y = Math.min(580 - player.current.size, player.current.y + speed);
+      if (keys['a'] || keys['arrowleft']) player.current.x = Math.max(20 + player.current.size, player.current.x - speed);
+      if (keys['d'] || keys['arrowright']) player.current.x = Math.min(780 - player.current.size, player.current.x + speed);
 
       // Render player
-      const playerGradient = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.size);
+      const playerGradient = ctx.createRadialGradient(player.current.x, player.current.y, 0, player.current.x, player.current.y, player.current.size);
       playerGradient.addColorStop(0, 'hsl(240, 20%, 95%)');
       playerGradient.addColorStop(1, 'hsl(240, 15%, 70%)');
       
       ctx.fillStyle = playerGradient;
       ctx.beginPath();
-      ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+      ctx.arc(player.current.x, player.current.y, player.current.size, 0, Math.PI * 2);
       ctx.fill();
 
       // Check victory condition
-      if (collectedCount === memoryOrbs.length) {
+      if (currentMemoryCount === orbs.length) {
+        saveGameState();
         onGameStateChange('victory');
-        ctx.restore(); // Restore canvas transform
+        if (soundsRef.current && !muted) {
+          soundsRef.current.victory.play();
+        }
+        ctx.restore();
         return;
       }
-
       // Restore canvas transform
       ctx.restore();
 
@@ -244,7 +437,7 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
         cancelAnimationFrame(animationId);
       }
     };
-  }, [isActive, onGameStateChange, onMemoryCollected]);
+  }, [isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted]);
 
   return (
     <div className="flex justify-center items-center min-h-screen">
@@ -255,4 +448,6 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
       />
     </div>
   );
-};
+});
+
+GameCanvas.displayName = 'GameCanvas';

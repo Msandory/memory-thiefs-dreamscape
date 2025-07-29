@@ -1,21 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import memoryPalaceBg from "@/assets/memory-palace-bg.jpg";
+import { Howl } from "howler";
 
 interface MainMenuProps {
   onStartGame: (name: string) => void;
   onShowInstructions: () => void;
+  muted: boolean;
 }
 
-export const MainMenu = ({ onStartGame, onShowInstructions }: MainMenuProps) => {
+export const MainMenu = ({ onStartGame, onShowInstructions, muted }: MainMenuProps) => {
   const [playerName, setPlayerName] = useState("");
+  const clickSoundRef = useRef<Howl | null>(null);
+
+  // Initialize click sound
+  useEffect(() => {
+    clickSoundRef.current = new Howl({
+      src: ['/assets/audio/ui-click.mp3'],
+      volume: 0.4,
+    });
+
+    return () => {
+      if (clickSoundRef.current) {
+        clickSoundRef.current.unload();
+        clickSoundRef.current = null;
+      }
+    };
+  }, []);
+
+  // Play click sound if not muted
+  const playClickSound = () => {
+    if (clickSoundRef.current && !muted) {
+      clickSoundRef.current.play();
+    }
+  };
 
   const handleStartGame = () => {
     if (playerName.trim()) {
+      playClickSound();
       onStartGame(playerName.trim());
     }
   };
+
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
@@ -83,7 +110,10 @@ export const MainMenu = ({ onStartGame, onShowInstructions }: MainMenuProps) => 
           <Button 
             variant="ethereal" 
             size="lg" 
-            onClick={onShowInstructions}
+            onClick={() => {
+              playClickSound();
+              onShowInstructions();
+            }}
             className="w-full animate-float"
             style={{ animationDelay: '0.4s' }}
           >

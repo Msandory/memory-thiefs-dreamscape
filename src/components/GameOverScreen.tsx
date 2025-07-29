@@ -1,27 +1,57 @@
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Howl } from "howler";
 
 interface GameOverScreenProps {
   isVictory: boolean;
   memoriesCollected: number;
   totalMemories: number;
+  playerName: string;
   onRestart: () => void;
   onMainMenu: () => void;
+  muted: boolean;
 }
 
 export const GameOverScreen = ({ 
   isVictory, 
   memoriesCollected, 
   totalMemories, 
+  playerName,
   onRestart, 
-  onMainMenu 
+  onMainMenu,
+  muted
 }: GameOverScreenProps) => {
+  const clickSoundRef = useRef<Howl | null>(null);
+
+  // Initialize click sound
+  useEffect(() => {
+    clickSoundRef.current = new Howl({
+      src: ['/assets/audio/ui-click.mp3'],
+      volume: 0.4,
+    });
+
+    return () => {
+      if (clickSoundRef.current) {
+        clickSoundRef.current.unload();
+        clickSoundRef.current = null;
+      }
+    };
+  }, []);
+
+  // Play click sound if not muted
+  const playClickSound = () => {
+    if (clickSoundRef.current && !muted) {
+      clickSoundRef.current.play();
+    }
+  };
+
   return (
     <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50">
       <div className="bg-card/90 backdrop-blur-sm border border-primary/30 rounded-lg p-8 space-y-6 min-w-96 text-center animate-fade-in">
         {isVictory ? (
           <>
             <h2 className="font-dream text-4xl font-bold text-primary animate-pulse-glow">
-              Victory!
+              Victory, {playerName}!
             </h2>
             <p className="text-lg text-foreground">
               You escaped with all the memories!
@@ -35,7 +65,7 @@ export const GameOverScreen = ({
         ) : (
           <>
             <h2 className="font-dream text-4xl font-bold text-destructive">
-              Caught!
+              Caught, {playerName}!
             </h2>
             <p className="text-lg text-foreground">
               The guardians sensed your presence...
@@ -52,7 +82,10 @@ export const GameOverScreen = ({
           <Button 
             variant="dream" 
             size="lg" 
-            onClick={onRestart}
+            onClick={() => {
+              playClickSound();
+              onRestart();
+            }}
             className="w-full"
           >
             Try Again
@@ -61,7 +94,10 @@ export const GameOverScreen = ({
           <Button 
             variant="ethereal" 
             size="lg" 
-            onClick={onMainMenu}
+            onClick={() => {
+              playClickSound();
+              onMainMenu();
+            }}
             className="w-full"
           >
             Main Menu

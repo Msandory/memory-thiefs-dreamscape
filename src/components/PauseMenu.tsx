@@ -1,12 +1,39 @@
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Howl } from "howler";
 
 interface PauseMenuProps {
   onResume: () => void;
   onRestart: () => void;
   onMainMenu: () => void;
+  muted: boolean;
 }
 
-export const PauseMenu = ({ onResume, onRestart, onMainMenu }: PauseMenuProps) => {
+export const PauseMenu = ({ onResume, onRestart, onMainMenu, muted }: PauseMenuProps) => {
+  const clickSoundRef = useRef<Howl | null>(null);
+
+  // Initialize click sound
+  useEffect(() => {
+    clickSoundRef.current = new Howl({
+      src: ['/assets/audio/ui-click.mp3'],
+      volume: 0.4,
+    });
+
+    return () => {
+      if (clickSoundRef.current) {
+        clickSoundRef.current.unload();
+        clickSoundRef.current = null;
+      }
+    };
+  }, []);
+
+  // Play click sound if not muted
+  const playClickSound = () => {
+    if (clickSoundRef.current && !muted) {
+      clickSoundRef.current.play();
+    }
+  };
+
   return (
     <div className="absolute inset-0 bg-background/80 backdrop-blur-md flex items-center justify-center z-50">
       <div className="bg-card/90 backdrop-blur-sm border border-primary/30 rounded-lg p-8 space-y-6 min-w-80 text-center animate-fade-in">
@@ -16,7 +43,10 @@ export const PauseMenu = ({ onResume, onRestart, onMainMenu }: PauseMenuProps) =
           <Button 
             variant="dream" 
             size="lg" 
-            onClick={onResume}
+            onClick={() => {
+              playClickSound();
+              onResume();
+            }}
             className="w-full"
           >
             Resume
@@ -25,7 +55,10 @@ export const PauseMenu = ({ onResume, onRestart, onMainMenu }: PauseMenuProps) =
           <Button 
             variant="ethereal" 
             size="lg" 
-            onClick={onRestart}
+            onClick={() => {
+              playClickSound();
+              onRestart();
+            }}
             className="w-full"
           >
             Restart
@@ -34,7 +67,10 @@ export const PauseMenu = ({ onResume, onRestart, onMainMenu }: PauseMenuProps) =
           <Button 
             variant="ghost" 
             size="lg" 
-            onClick={onMainMenu}
+            onClick={() => {
+              playClickSound();
+              onMainMenu();
+            }}
             className="w-full"
           >
             Main Menu
