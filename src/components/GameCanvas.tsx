@@ -23,6 +23,8 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
     canvas.height = 600;
 
     let animationId: number;
+    let roomShift = { x: 0, y: 0, intensity: 0 };
+    let previousMemoryCount = memoriesCollected;
     let player = { x: 400, y: 300, size: 20 };
     let memoryOrbs = [
       { x: 200, y: 150, collected: false, pulse: 0, collectingTime: 0 },
@@ -55,6 +57,24 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
 
     const render = () => {
       if (!ctx) return;
+
+      // Check for memory collection to trigger room shift
+      const currentMemoryCount = memoryOrbs.filter(orb => orb.collected).length;
+      if (currentMemoryCount > previousMemoryCount) {
+        roomShift.intensity = 1.0;
+        previousMemoryCount = currentMemoryCount;
+      }
+
+      // Update room shift effect
+      if (roomShift.intensity > 0) {
+        roomShift.intensity -= 0.02;
+        roomShift.x = (Math.random() - 0.5) * roomShift.intensity * 20;
+        roomShift.y = (Math.random() - 0.5) * roomShift.intensity * 20;
+      }
+
+      // Apply room shift transform
+      ctx.save();
+      ctx.translate(roomShift.x, roomShift.y);
 
       // Clear canvas with dream-like gradient
       const gradient = ctx.createLinearGradient(0, 0, 800, 600);
@@ -204,8 +224,12 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
       // Check victory condition
       if (collectedCount === memoryOrbs.length) {
         onGameStateChange('victory');
+        ctx.restore(); // Restore canvas transform
         return;
       }
+
+      // Restore canvas transform
+      ctx.restore();
 
       animationId = requestAnimationFrame(render);
     };

@@ -1,12 +1,21 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import memoryPalaceBg from "@/assets/memory-palace-bg.jpg";
 
 interface MainMenuProps {
-  onStartGame: () => void;
+  onStartGame: (name: string) => void;
   onShowInstructions: () => void;
 }
 
 export const MainMenu = ({ onStartGame, onShowInstructions }: MainMenuProps) => {
+  const [playerName, setPlayerName] = useState("");
+
+  const handleStartGame = () => {
+    if (playerName.trim()) {
+      onStartGame(playerName.trim());
+    }
+  };
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
@@ -52,10 +61,19 @@ export const MainMenu = ({ onStartGame, onShowInstructions }: MainMenuProps) => 
 
         {/* Menu buttons */}
         <div className="space-y-4 min-w-72">
+          <Input 
+            placeholder="Enter your name..."
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            className="w-full text-center bg-background/20 border-primary/30 placeholder:text-muted-foreground/50"
+            onKeyDown={(e) => e.key === 'Enter' && handleStartGame()}
+          />
+          
           <Button 
             variant="dream" 
             size="xl" 
-            onClick={onStartGame}
+            onClick={handleStartGame}
+            disabled={!playerName.trim()}
             className="w-full animate-float"
             style={{ animationDelay: '0.2s' }}
           >

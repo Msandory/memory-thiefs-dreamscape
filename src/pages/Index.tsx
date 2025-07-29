@@ -12,14 +12,18 @@ type GameState = 'menu' | 'instructions' | 'playing' | 'paused' | 'gameOver' | '
 const Index = () => {
   const [gameState, setGameState] = useState<GameState>('menu');
   const [memoriesCollected, setMemoriesCollected] = useState(0);
+  const [score, setScore] = useState(0);
+  const [playerName, setPlayerName] = useState('');
   const [gameMessage, setGameMessage] = useState("Enter the memory palace and begin your theft...");
   
   const totalMemories = 5;
 
-  const handleStartGame = () => {
+  const handleStartGame = (name: string) => {
+    setPlayerName(name);
     setGameState('playing');
     setMemoriesCollected(0);
-    setGameMessage("You feel the ancient presence of forgotten memories...");
+    setScore(0);
+    setGameMessage(`${name}, you feel the ancient presence of forgotten memories...`);
     toast("The memory palace awakens...", { 
       description: "Use WASD or Arrow Keys to move" 
     });
@@ -45,7 +49,9 @@ const Index = () => {
 
   const handleMemoryCollected = () => {
     const newCount = memoriesCollected + 1;
+    const newScore = score + 1;
     setMemoriesCollected(newCount);
+    setScore(newScore);
     setGameMessage(`A memory whispers its secrets... (${newCount}/${totalMemories})`);
     toast(`Memory collected! (${newCount}/${totalMemories})`, {
       description: "The orb dissolves into your consciousness"
@@ -55,13 +61,23 @@ const Index = () => {
   const handleRestart = () => {
     setGameState('playing');
     setMemoriesCollected(0);
+    setScore(0);
     setGameMessage("The palace resets, memories await once more...");
   };
 
   const handleMainMenu = () => {
     setGameState('menu');
     setMemoriesCollected(0);
+    setScore(0);
     setGameMessage("Enter the memory palace and begin your theft...");
+  };
+
+  const handleTogglePlay = () => {
+    if (gameState === 'playing') {
+      setGameState('paused');
+    } else if (gameState === 'paused') {
+      setGameState('playing');
+    }
   };
 
   return (
@@ -89,7 +105,11 @@ const Index = () => {
           <GameHUD
             memoriesCollected={memoriesCollected}
             totalMemories={totalMemories}
+            score={score}
+            playerName={playerName}
             gameMessage={gameMessage}
+            isPlaying={gameState === 'playing'}
+            onTogglePlay={handleTogglePlay}
           />
 
           {gameState === 'paused' && (
