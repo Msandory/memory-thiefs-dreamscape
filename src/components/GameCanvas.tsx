@@ -25,11 +25,11 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
     let animationId: number;
     let player = { x: 400, y: 300, size: 20 };
     let memoryOrbs = [
-      { x: 200, y: 150, collected: false, pulse: 0 },
-      { x: 600, y: 200, collected: false, pulse: 0 },
-      { x: 300, y: 450, collected: false, pulse: 0 },
-      { x: 700, y: 400, collected: false, pulse: 0 },
-      { x: 150, y: 500, collected: false, pulse: 0 },
+      { x: 200, y: 150, collected: false, pulse: 0, collectingTime: 0 },
+      { x: 600, y: 200, collected: false, pulse: 0, collectingTime: 0 },
+      { x: 300, y: 450, collected: false, pulse: 0, collectingTime: 0 },
+      { x: 700, y: 400, collected: false, pulse: 0, collectingTime: 0 },
+      { x: 150, y: 500, collected: false, pulse: 0, collectingTime: 0 },
     ];
     let guardians = [
       { x: 500, y: 100, direction: 1, patrol: { start: 450, end: 550 } },
@@ -65,6 +65,13 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, 800, 600);
 
+      // Draw visible boundaries
+      ctx.strokeStyle = 'hsl(280, 50%, 40%)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 5]);
+      ctx.strokeRect(10, 10, 780, 580);
+      ctx.setLineDash([]);
+
       // Add floating mist particles
       ctx.save();
       ctx.globalAlpha = 0.1;
@@ -89,9 +96,32 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
         if (orb.collected) return;
 
         orb.pulse += 0.05;
+        
+        // Check collision with player
+        const dx = player.x - orb.x;
+        const dy = player.y - orb.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < player.size && orb.collectingTime === 0) {
+          orb.collectingTime = 1; // Start collection process
+        }
+        
+        // Handle collection animation
+        if (orb.collectingTime > 0) {
+          orb.collectingTime += 0.03;
+          if (orb.collectingTime >= 1) {
+            orb.collected = true;
+            onMemoryCollected();
+            return;
+          }
+        }
+        
         const glowSize = 15 + Math.sin(orb.pulse) * 5;
+        const alpha = orb.collectingTime > 0 ? 1 - orb.collectingTime : 1;
         
         // Glow effect
+        ctx.save();
+        ctx.globalAlpha = alpha;
         const orbGradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, glowSize);
         orbGradient.addColorStop(0, 'hsl(280, 80%, 75%)');
         orbGradient.addColorStop(0.7, 'hsl(270, 70%, 65%)');
@@ -101,23 +131,31 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
         ctx.beginPath();
         ctx.arc(orb.x, orb.y, glowSize, 0, Math.PI * 2);
         ctx.fill();
-
-        // Check collision with player
-        const dx = player.x - orb.x;
-        const dy = player.y - orb.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance < player.size) {
-          orb.collected = true;
-          onMemoryCollected();
-        }
+        ctx.restore();
       });
 
       // Update and render guardians
+      const collectedCount = memoryOrbs.filter(orb => orb.collected).length;
+      const shouldChase = collectedCount > 0;
+      
       guardians.forEach(guardian => {
-        guardian.x += guardian.direction * 1;
-        if (guardian.x >= guardian.patrol.end || guardian.x <= guardian.patrol.start) {
-          guardian.direction *= -1;
+        if (shouldChase) {
+          // Chase player
+          const dx = player.x - guardian.x;
+          const dy = player.y - guardian.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance > 0) {
+            const speed = 1.5;
+            guardian.x += (dx / distance) * speed;
+            guardian.y += (dy / distance) * speed;
+          }
+        } else {
+          // Normal patrol behavior
+          guardian.x += guardian.direction * 1;
+          if (guardian.x >= guardian.patrol.end || guardian.x <= guardian.patrol.start) {
+            guardian.direction *= -1;
+          }
         }
 
         // Guardian glow
@@ -146,12 +184,12 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
         }
       });
 
-      // Handle player movement
+      // Handle player movement (respect boundaries)
       const speed = 3;
-      if (keys['w'] || keys['arrowup']) player.y = Math.max(player.size, player.y - speed);
-      if (keys['s'] || keys['arrowdown']) player.y = Math.min(600 - player.size, player.y + speed);
-      if (keys['a'] || keys['arrowleft']) player.x = Math.max(player.size, player.x - speed);
-      if (keys['d'] || keys['arrowright']) player.x = Math.min(800 - player.size, player.x + speed);
+      if (keys['w'] || keys['arrowup']) player.y = Math.max(20 + player.size, player.y - speed);
+      if (keys['s'] || keys['arrowdown']) player.y = Math.min(580 - player.size, player.y + speed);
+      if (keys['a'] || keys['arrowleft']) player.x = Math.max(20 + player.size, player.x - speed);
+      if (keys['d'] || keys['arrowright']) player.x = Math.min(780 - player.size, player.x + speed);
 
       // Render player
       const playerGradient = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.size);
@@ -164,7 +202,6 @@ export const GameCanvas = ({ isActive, onGameStateChange, memoriesCollected, onM
       ctx.fill();
 
       // Check victory condition
-      const collectedCount = memoryOrbs.filter(orb => orb.collected).length;
       if (collectedCount === memoryOrbs.length) {
         onGameStateChange('victory');
         return;
