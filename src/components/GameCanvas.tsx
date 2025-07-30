@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Howl } from "howler";
+// Optional: Import audio files if required by your build tool
+ import orbCollect from '@/assets/audio/orb-collect.mp3';
+ import guardianAlert from '@/assets/audio/guardian-alert.mp3';
+ import gameOver from '@/assets/audio/game-over.mp3';
+ import victory from '@/assets/audio/victory.mp3';
+ import backgroundMusic from '@/assets/audio/background-music.mp3';
 
 interface GameCanvasProps {
   isActive: boolean;
@@ -77,31 +83,37 @@ export const GameCanvas = forwardRef(({
   const memoryOrbs = useRef(initialState.memoryOrbs);
   const guardians = useRef<Guardian[]>(initialState.guardians);
   const previousMemoryCount = useRef(initialState.memoriesCollected);
-  const alertedGuardians = useRef<Set<number>>(new Set()); // Track alerted guardians
+  const alertedGuardians = useRef<Set<number>>(new Set());
 
-  // Initialize sounds
+  // Initialize sounds with error handling
   useEffect(() => {
     soundsRef.current = {
       orbCollect: new Howl({
-        src: ['/assets/audio/orb-collect.mp3'],
+        src: [orbCollect], // or [orbCollect] if imported
         volume: 0.5,
+        onloaderror: (id, error) => console.error('Failed to load orb-collect.mp3:', error),
       }),
       guardianAlert: new Howl({
-        src: ['/assets/audio/guardian-alert.mp3'],
+        //src: ['/assets/audio/guardian-alert.mp3'], // or [guardianAlert]
+        src:  [guardianAlert],
         volume: 0.6,
+        onloaderror: (id, error) => console.error('Failed to load guardian-alert.mp3:', error),
       }),
       gameOver: new Howl({
-        src: ['/assets/audio/game-over.mp3'],
+        src: [gameOver], // or [gameOver]
         volume: 0.7,
+        onloaderror: (id, error) => console.error('Failed to load game-over.mp3:', error),
       }),
       victory: new Howl({
-        src: ['/assets/audio/victory.mp3'],
+        src: [victory], // or [victory]
         volume: 0.7,
+        onloaderror: (id, error) => console.error('Failed to load victory.mp3:', error),
       }),
       background: new Howl({
-        src: ['/assets/audio/background-music.mp3'],
+        src: [backgroundMusic], // or [backgroundMusic]
         loop: true,
         volume: 0.3,
+        onloaderror: (id, error) => console.error('Failed to load background-music.mp3:', error),
       }),
     };
 

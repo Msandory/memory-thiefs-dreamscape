@@ -1,60 +1,76 @@
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Howl } from "howler";
+import uiClick from '@/assets/audio/ui-click.mp3';
 
 interface InstructionsScreenProps {
   onBack: () => void;
+  muted: boolean; // Ensure muted is defined
 }
 
-export const InstructionsScreen = ({ onBack }: InstructionsScreenProps) => {
+export const InstructionsScreen = ({ onBack, muted }: InstructionsScreenProps) => {
+  const clickSoundRef = useRef<Howl | null>(null);
+
+  useEffect(() => {
+    clickSoundRef.current = new Howl({
+      src: [uiClick],
+      volume: 0.4,
+      onloaderror: (id, error) => console.error('Failed to load ui-click.mp3:', error),
+    });
+
+    return () => {
+      if (clickSoundRef.current) {
+        clickSoundRef.current.unload();
+        clickSoundRef.current = null;
+      }
+    };
+  }, []);
+
+  const playClickSound = () => {
+    if (clickSoundRef.current && !muted) {
+      clickSoundRef.current.play();
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="bg-card/90 backdrop-blur-sm border border-primary/30 rounded-lg p-8 max-w-2xl space-y-6 animate-fade-in">
-        <h2 className="font-dream text-4xl font-bold text-primary text-center">
-          How to Play
-        </h2>
-        
-        <div className="space-y-6 text-foreground">
-          <div className="space-y-2">
-            <h3 className="font-dream text-xl font-semibold text-accent">Movement</h3>
-            <p>Use <kbd className="px-2 py-1 bg-muted rounded text-xs">WASD</kbd> or <kbd className="px-2 py-1 bg-muted rounded text-xs">Arrow Keys</kbd> to navigate the memory palace</p>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="font-dream text-xl font-semibold text-accent">Objective</h3>
-            <p>Collect all glowing memory orbs while avoiding the ancient guardians that patrol the palace</p>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="font-dream text-xl font-semibold text-accent">Guardians</h3>
-            <p>Red glowing entities that follow patrol paths. If they detect you, the theft fails</p>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="font-dream text-xl font-semibold text-accent">Memory Orbs</h3>
-            <p>Purple glowing spheres containing stolen memories. Collect all to escape the palace</p>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="font-dream text-xl font-semibold text-accent">Controls</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <p><kbd className="px-2 py-1 bg-muted rounded text-xs">ESC</kbd> - Pause game</p>
-              <p><kbd className="px-2 py-1 bg-muted rounded text-xs">WASD</kbd> - Move player</p>
-            </div>
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="bg-card/90 border border-primary/30 rounded-lg p-8 space-y-6 text-center animate-fade-in max-w-md w-full">
+        <h1 className="font-dream text-4xl font-bold text-primary">
+          Instructions
+        </h1>
+        <p className="text-lg text-foreground">
+          Navigate the memory palace to steal all memories while avoiding the guardians.
+        </p>
+        <div className="text-left space-y-2">
+          <p className="font-dream text-lg">
+            <strong>Controls:</strong>
+          </p>
+          <ul className="list-disc list-inside text-foreground">
+            <li>WASD or Arrow Keys: Move the player</li>
+            <li>Escape: Pause/Unpause</li>
+            <li>R: Restart game</li>
+            <li>M: Toggle mute</li>
+          </ul>
+          <p className="font-dream text-lg">
+            <strong>Objective:</strong>
+          </p>
+          <p className="text-foreground">
+            Collect all 5 memory orbs without being caught by the guardians. Each orb collected makes guardians faster.
+          </p>
         </div>
-
-        <div className="text-center pt-4">
-          <Button 
-            variant="dream" 
-            size="lg" 
-            onClick={onBack}
-            className="min-w-32"
-          >
-            Back
-          </Button>
-        </div>
-
-        <p className="text-sm text-muted-foreground text-center italic">
-          "Navigate the surreal dreamscape and claim what was forgotten..."
+        <Button
+          variant="ethereal"
+          size="lg"
+          onClick={() => {
+            playClickSound();
+            onBack();
+          }}
+          className="w-full"
+        >
+          Back to Main Menu
+        </Button>
+        <p className="text-sm text-muted-foreground italic">
+          "The memories are fleeting, but the guardians are eternal..."
         </p>
       </div>
     </div>

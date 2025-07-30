@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Howl } from "howler";
+import uiClick from '@/assets/audio/ui-click.mp3'; // Assuming you’re importing audio
 
 interface GameOverScreenProps {
   isVictory: boolean;
@@ -12,22 +13,23 @@ interface GameOverScreenProps {
   muted: boolean;
 }
 
-export const GameOverScreen = ({ 
-  isVictory, 
-  memoriesCollected, 
-  totalMemories, 
+export const GameOverScreen = ({
+  isVictory,
+  memoriesCollected,
+  totalMemories,
   playerName,
-  onRestart, 
+  onRestart,
   onMainMenu,
-  muted
+  muted,
 }: GameOverScreenProps) => {
   const clickSoundRef = useRef<Howl | null>(null);
 
   // Initialize click sound
   useEffect(() => {
     clickSoundRef.current = new Howl({
-      src: ['/assets/audio/ui-click.mp3'],
-      volume: 0.4,
+      src: [uiClick],
+      volume: 10,
+      onloaderror: (id, error) => console.error('Failed to load ui-click.mp3:', error),
     });
 
     return () => {
@@ -77,11 +79,11 @@ export const GameOverScreen = ({
             </div>
           </>
         )}
-        
+
         <div className="space-y-3">
-          <Button 
-            variant="dream" 
-            size="lg" 
+          <Button
+            variant="dream"
+            size="lg"
             onClick={() => {
               playClickSound();
               onRestart();
@@ -90,12 +92,13 @@ export const GameOverScreen = ({
           >
             Try Again
           </Button>
-          
-          <Button 
-            variant="ethereal" 
-            size="lg" 
+
+          <Button
+            variant="ethereal"
+            size="lg"
             onClick={() => {
               playClickSound();
+              console.log('Main Menu button clicked, calling onMainMenu');
               onMainMenu();
             }}
             className="w-full"
