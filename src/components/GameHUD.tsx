@@ -15,7 +15,7 @@ interface GameHUDProps {
   onToggleMute: () => void;
   timeRemaining: number;
   timerActive: boolean;
-  currentLevel: number; // New prop
+  currentLevel: number;
 }
 
 export const GameHUD = ({
@@ -57,69 +57,78 @@ export const GameHUD = ({
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none">
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-center pointer-events-auto">
-        <div className="flex gap-3">
-          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-4 py-2 flex items-center gap-3">
-            <img 
-              src={memoryOrbImg} 
-              alt="Memory Orb" 
-              className="w-6 h-6 rounded-full animate-pulse-glow"
+    <div
+      className="absolute top-0 left-0 w-full h-full pointer-events-none"
+      style={{
+        maxWidth: '800px',
+        maxHeight: '600px',
+        aspectRatio: '4 / 3',
+        margin: 'auto',
+        contain: 'layout', // Ensures HUD is clipped to its bounds
+      }}
+    >
+      <div className="absolute top-[1%] left-[1%] right-[1%] flex flex-wrap justify-between items-start gap-2 pointer-events-auto">
+        <div className="flex flex-wrap gap-2">
+          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-2 py-1 flex items-center gap-2 min-w-0">
+            <img
+              src={memoryOrbImg}
+              alt="Memory Orb"
+              className="w-5 h-5 rounded-full animate-pulse-glow"
             />
-            <span className="font-dream text-lg">
-              {memoriesCollected}/{totalMemories} Memories
+            <span className="font-dream text-sm sm:text-base truncate">
+              {memoriesCollected}/{totalMemories}
             </span>
           </div>
-          
-          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-4 py-2">
-            <span className="font-dream text-lg">Score: {score}</span>
+
+          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-2 py-1 min-w-0">
+            <span className="font-dream text-sm sm:text-base truncate">Score: {score}</span>
           </div>
 
-          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-4 py-2">
-            <span className="font-dream text-lg">Level: {currentLevel}</span>
+          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-2 py-1 min-w-0">
+            <span className="font-dream text-sm sm:text-base truncate">Level: {currentLevel}</span>
           </div>
 
           {timerActive && (
-            <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-4 py-2 flex items-center gap-2">
-              <Clock className={`w-5 h-5 ${getTimerColor(timeRemaining)}`} />
-              <span className={`font-dream text-lg font-bold ${getTimerColor(timeRemaining)}`}>
+            <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-2 py-1 flex items-center gap-1 min-w-0">
+              <Clock className={`w-4 h-4 ${getTimerColor(timeRemaining)}`} />
+              <span className={`font-dream text-sm sm:text-base font-bold ${getTimerColor(timeRemaining)} truncate`}>
                 {formatTime(timeRemaining)}
               </span>
             </div>
           )}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <Button
             variant="ethereal"
-            size="lg"
+            size="sm"
             onClick={onTogglePlay}
-            className="bg-card/50 backdrop-blur-sm border border-primary/30"
+            className="bg-card/50 backdrop-blur-sm border border-primary/30 p-2"
           >
-            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </Button>
           <Button
             variant="ethereal"
-            size="lg"
+            size="sm"
             onClick={onToggleMute}
-            className="bg-card/50 backdrop-blur-sm border border-primary/30"
+            className="bg-card/50 backdrop-blur-sm border border-primary/30 p-2"
             title={muted ? "Unmute (M)" : "Mute (M)"}
           >
-            {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </Button>
         </div>
 
-        <div className="flex gap-3 items-center">
-          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-4 py-2">
-            <span className="font-dream text-lg">{playerName}</span>
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-2 py-1 min-w-0">
+            <span className="font-dream text-sm sm:text-base truncate">{playerName}</span>
           </div>
-          
-          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg p-3">
-            <div className="w-16 h-12 bg-muted/50 rounded border grid grid-cols-4 gap-px">
+
+          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg p-2">
+            <div className="w-12 h-9 bg-muted/50 rounded border grid grid-cols-4 gap-px">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div 
-                  key={i} 
-                  className={`${i === 5 ? 'bg-primary' : 'bg-muted/30'} rounded-sm`} 
+                <div
+                  key={i}
+                  className={`${i === 5 ? 'bg-primary' : 'bg-muted/30'} rounded-sm`}
                 />
               ))}
             </div>
@@ -128,13 +137,13 @@ export const GameHUD = ({
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-4 right-4">
-        <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-6 py-3 text-center">
-          <p className="font-dream text-lg text-foreground/90 animate-fade-in">
+      <div className="absolute bottom-[1%] left-[1%] right-[1%]">
+        <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-4 py-2 text-center max-w-full">
+          <p className="font-dream text-sm sm:text-base text-foreground/90 animate-fade-in truncate">
             {gameMessage}
           </p>
           {timerActive && timeRemaining <= 10 && timeRemaining > 0 && (
-            <p className="font-dream text-sm text-red-400 animate-pulse mt-1">
+            <p className="font-dream text-xs sm:text-sm text-red-400 animate-pulse mt-1 truncate">
               Time is running out! Hurry!
             </p>
           )}

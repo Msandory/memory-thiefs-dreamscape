@@ -27,7 +27,21 @@ export const PauseMenu = ({ onResume, onRestart, onMainMenu, muted }: PauseMenuP
       }
     };
   }, []);
+useEffect(() => {
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      console.log('ESC key pressed - resuming game');
+      playClickSound();
+      onResume();
+    }
+  };
 
+  document.addEventListener('keydown', handleKeyDown);
+
+  return () => {
+    document.removeEventListener('keydown', handleKeyDown);
+  };
+}, [onResume, muted])
   // Play click sound if not muted
   const playClickSound = () => {
     if (clickSoundRef.current && !muted) {
@@ -77,10 +91,6 @@ export const PauseMenu = ({ onResume, onRestart, onMainMenu, muted }: PauseMenuP
             Main Menu
           </Button>
         </div>
-
-        <p className="text-sm text-muted-foreground">
-          Press <kbd className="px-2 py-1 bg-muted rounded text-xs">ESC</kbd> to resume
-        </p>
       </div>
     </div>
   );

@@ -8,11 +8,13 @@ interface MainMenuProps {
   onStartGame: (name: string) => void;
   onShowInstructions: () => void;
   muted: boolean;
-  savedPlayerName: string; // Added prop for saved name
+  savedPlayerName: string;
+  onClearPlayerName: () => void; // NEW: Add prop for clearing saved name
 }
 
-export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerName }: MainMenuProps) => {
+export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerName, onClearPlayerName }: MainMenuProps) => {
   const [playerName, setPlayerName] = useState(savedPlayerName);
+  const [showNameInput, setShowNameInput] = useState(!savedPlayerName); // NEW: Control whether to show input
   const clickSoundRef = useRef<Howl | null>(null);
 
   // Initialize click sound
@@ -31,6 +33,12 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
     };
   }, []);
 
+  // NEW: Update local state when savedPlayerName changes
+  useEffect(() => {
+    setPlayerName(savedPlayerName);
+    setShowNameInput(!savedPlayerName);
+  }, [savedPlayerName]);
+
   // Play click sound if not muted
   const playClickSound = () => {
     if (clickSoundRef.current && !muted) {
@@ -45,6 +53,14 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
     }
   };
 
+  // NEW: Handle changing name
+  const handleChangeName = () => {
+    playClickSound();
+    setShowNameInput(true);
+    setPlayerName('');
+    onClearPlayerName(); // Clear the saved name in parent component
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm">
       <div className="bg-card/90 border border-primary/30 rounded-lg p-8 space-y-6 text-center animate-fade-in max-w-md w-full">
@@ -55,7 +71,8 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
           Steal the memories, evade the guardians.
         </p>
 
-        {savedPlayerName ? (
+        {/* UPDATED: Use showNameInput instead of checking savedPlayerName directly */}
+        {savedPlayerName && !showNameInput ? (
           <div className="space-y-2">
             <p className="text-lg font-dream text-primary">
               Welcome back, {savedPlayerName}!
@@ -74,10 +91,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
             <Button
               variant="ethereal"
               size="sm"
-              onClick={() => {
-                playClickSound();
-                setPlayerName(''); // Allow changing name
-              }}
+              onClick={handleChangeName} // UPDATED: Use the new handler
               className="w-full"
             >
               Change Name
@@ -96,6 +110,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
                   handleSubmit();
                 }
               }}
+              autoFocus // NEW: Auto-focus the input when it appears
             />
             <Button
               variant="dream"
@@ -106,6 +121,21 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
             >
               Start Game
             </Button>
+            {/* NEW: Show "Back" button if there was a saved name */}
+            {savedPlayerName && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  playClickSound();
+                  setShowNameInput(false);
+                  setPlayerName(savedPlayerName);
+                }}
+                className="w-full"
+              >
+                Back
+              </Button>
+            )}
           </div>
         )}
 

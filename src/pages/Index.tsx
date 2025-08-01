@@ -139,12 +139,10 @@ const Index = () => {
   }, [memoriesCollected, score, currentLevel]);
 
   const handleRestart = useCallback(() => {
-    
     setGameState('playing');
     setMemoriesCollected(0);
     setScore(0);
     setCurrentLevel(1);
-   // setTimerActive(false);
     setGameMessage(`${playerName}, the palace resets, memories await once more...`);
     if (gameCanvasRef.current) {
       gameCanvasRef.current.reset();
@@ -152,8 +150,8 @@ const Index = () => {
   }, [playerName]);
 
   const handleMainMenu = useCallback(() => {
-    
-    setGameState('paused');
+    // FIX: Set gameState to 'menu' instead of 'paused'
+    setGameState('menu');
     setMemoriesCollected(0);
     setScore(0);
     setCurrentLevel(1);
@@ -162,6 +160,19 @@ const Index = () => {
     setGameMessage("Enter the memory palace and begin your theft...");
     if (gameCanvasRef.current) {
       gameCanvasRef.current.reset();
+    }
+  }, []);
+
+  // NEW: Add handler for clearing saved player name
+  const handleClearPlayerName = useCallback(() => {
+    console.log('handleClearPlayerName called');
+    setPlayerName('');
+    // Also clear from localStorage if needed
+    const saved = localStorage.getItem('gameState');
+    if (saved) {
+      const parsed: SavedGameState = JSON.parse(saved);
+      parsed.playerName = '';
+      localStorage.setItem('gameState', JSON.stringify(parsed));
     }
   }, []);
 
@@ -207,7 +218,7 @@ const Index = () => {
           onShowInstructions={() => setGameState('instructions')}
           muted={muted}
           savedPlayerName={playerName}
-          
+          onClearPlayerName={handleClearPlayerName} // NEW: Pass the clear function
         />
       )}
 

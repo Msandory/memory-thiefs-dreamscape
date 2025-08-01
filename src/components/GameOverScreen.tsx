@@ -67,7 +67,7 @@ export const GameOverScreen = ({
         ) : (
           <>
             <h2 className="font-dream text-4xl font-bold text-destructive">
-              Caught, {playerName}!
+              Oh No, {playerName}!
             </h2>
             <p className="text-lg text-foreground">
               Game Over!
