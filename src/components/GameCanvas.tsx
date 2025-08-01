@@ -1,11 +1,29 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Howl } from "howler";
-// Optional: Import audio files if required by your build tool
- import orbCollect from '@/assets/audio/orb-collect.mp3';
- import guardianAlert from '@/assets/audio/guardian-alert.mp3';
- import gameOver from '@/assets/audio/game-over.mp3';
- import victory from '@/assets/audio/victory.mp3';
- import backgroundMusic from '@/assets/audio/background-music.mp3';
+import orbCollect from '@/assets/audio/orb-collect.mp3';
+import guardianAlert from '@/assets/audio/guardian-alert.mp3';
+import gameOver from '@/assets/audio/game-over.mp3';
+import victory from '@/assets/audio/victory.mp3';
+import backgroundMusic from '@/assets/audio/background-music.mp3';
+import spriteSheet from '@/assets/sprites/player-sprite-sheet.png';
+import leftImage from '@/assets/sprites/left.png';
+import rightImage from '@/assets/sprites/right.png';
+import guardSpriteSheet from '@/assets/sprites/guard-sprite-sheet.png';
+
+// Configuration for game levels
+const gameConfig = {
+  MAX_LEVELS: 5,
+  baseTimer: 6,
+  timerIncrement: 2,
+  baseGuardSpeed: 1.5,
+  speedIncrement: 0.5,
+  initialOrbs: 2,
+  orbsPerLevel: 1,
+  initialGuards: 1,
+  guardsPerLevel: 1,
+  safeDistance: 100,
+  margin: 50,
+};
 
 interface GameCanvasProps {
   isActive: boolean;
@@ -15,6 +33,9 @@ interface GameCanvasProps {
   playerName: string;
   onPlayerNameLoaded: (name: string) => void;
   muted: boolean;
+  onTimerUpdate?: (time: number) => void;
+  onTimerActive?: (isActive: boolean) => void;
+  onLevelChange?: (level: number) => void;
 }
 
 interface Guardian {
@@ -23,6 +44,7 @@ interface Guardian {
   direction: number;
   patrol: { start: number; end: number };
   alert: boolean;
+  patrolType: 'horizontal' | 'vertical';
 }
 
 interface SavedGameState {
@@ -31,19 +53,28 @@ interface SavedGameState {
   guardians: Guardian[];
   memoriesCollected: number;
   playerName: string;
+  currentLevel: number;
+  timeRemaining: number;
 }
 
-export const GameCanvas = forwardRef(({
+export const GameCanvas = forwardRef<any, GameCanvasProps>(({
   isActive,
   onGameStateChange,
   memoriesCollected,
   onMemoryCollected,
   playerName,
   onPlayerNameLoaded,
-  muted
-}: GameCanvasProps, ref) => {
+  muted,
+  onTimerUpdate,
+  onTimerActive,
+  onLevelChange,
+}, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
   const soundsRef = useRef<{
     orbCollect: Howl;
     guardianAlert: Howl;
@@ -51,103 +82,101 @@ export const GameCanvas = forwardRef(({
     victory: Howl;
     background: Howl;
   } | null>(null);
-
-  // Initialize default state
-  const defaultOrbs = [
-    { x: 200, y: 150, collected: false, pulse: 0, collectingTime: 0 },
-    { x: 600, y: 200, collected: false, pulse: 0, collectingTime: 0 },
-    { x: 300, y: 450, collected: false, pulse: 0, collectingTime: 0 },
-    { x: 700, y: 400, collected: false, pulse: 0, collectingTime: 0 },
-    { x: 150, y: 500, collected: false, pulse: 0, collectingTime: 0 },
-  ];
-  const defaultGuardians = [
-    { x: 500, y: 100, direction: 1, patrol: { start: 450, end: 550 }, alert: false },
-    { x: 250, y: 350, direction: 1, patrol: { start: 200, end: 400 }, alert: false },
-  ];
-  const defaultPlayer = { x: 400, y: 300, size: 20 };
-  const defaultPlayerName = playerName || "Player";
-
-  // Load saved state from localStorage, if available
-  const savedState = localStorage.getItem('gameState');
-  const initialState: SavedGameState = savedState
-    ? JSON.parse(savedState)
-    : {
-        player: defaultPlayer,
-        memoryOrbs: defaultOrbs,
-        guardians: defaultGuardians,
-        memoriesCollected: 0,
-        playerName: defaultPlayerName,
-      };
-
-  const player = useRef(initialState.player);
-  const memoryOrbs = useRef(initialState.memoryOrbs);
-  const guardians = useRef<Guardian[]>(initialState.guardians);
-  const previousMemoryCount = useRef(initialState.memoriesCollected);
+  const firstRender = useRef(true);
+  const lastTimerUpdate = useRef<number>(Date.now());
+  const timerStarted = useRef(false);
+  const player = useRef({ x: 400, y: 300, size: 20 });
+  const memoryOrbs = useRef<{ x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[]>([]);
+  const guardians = useRef<Guardian[]>([]);
+  const previousMemoryCount = useRef(0);
   const alertedGuardians = useRef<Set<number>>(new Set());
+  
 
-  // Initialize sounds with error handling
+  const getLevelConfig = (level: number) => ({
+    orbs: gameConfig.initialOrbs + (level - 1) * gameConfig.orbsPerLevel,
+    guards: gameConfig.initialGuards + (level - 1) * gameConfig.guardsPerLevel,
+    guardSpeed: gameConfig.baseGuardSpeed + (level - 1) * gameConfig.speedIncrement,
+    timer: gameConfig.baseTimer + (level - 1) * gameConfig.timerIncrement,
+  });
+
+  const getRandomPosition = (canvas: { width: number; height: number }) => ({
+    x: gameConfig.margin + Math.random() * (canvas.width - 2 * gameConfig.margin),
+    y: gameConfig.margin + Math.random() * (canvas.height - 2 * gameConfig.margin),
+  });
+
+  const isSafePosition = (pos1: { x: number; y: number }, pos2: { x: number; y: number }) => {
+    const dx = pos1.x - pos2.x;
+    const dy = pos1.y - pos2.y;
+    return Math.sqrt(dx * dx + dy * dy) >= gameConfig.safeDistance;
+  };
+
   useEffect(() => {
     soundsRef.current = {
-      orbCollect: new Howl({
-        src: [orbCollect], // or [orbCollect] if imported
-        volume: 0.5,
-        onloaderror: (id, error) => console.error('Failed to load orb-collect.mp3:', error),
-      }),
-      guardianAlert: new Howl({
-        //src: ['/assets/audio/guardian-alert.mp3'], // or [guardianAlert]
-        src:  [guardianAlert],
-        volume: 0.6,
-        onloaderror: (id, error) => console.error('Failed to load guardian-alert.mp3:', error),
-      }),
-      gameOver: new Howl({
-        src: [gameOver], // or [gameOver]
-        volume: 0.7,
-        onloaderror: (id, error) => console.error('Failed to load game-over.mp3:', error),
-      }),
-      victory: new Howl({
-        src: [victory], // or [victory]
-        volume: 0.7,
-        onloaderror: (id, error) => console.error('Failed to load victory.mp3:', error),
-      }),
-      background: new Howl({
-        src: [backgroundMusic], // or [backgroundMusic]
-        loop: true,
-        volume: 0.3,
-        onloaderror: (id, error) => console.error('Failed to load background-music.mp3:', error),
-      }),
+      orbCollect: new Howl({ src: [orbCollect], volume: 0.5, onloaderror: (id, error) => console.error('Failed to load orb-collect.mp3:', error) }),
+      guardianAlert: new Howl({ src: [guardianAlert], volume: 0.6, onloaderror: (id, error) => console.error('Failed to load guardian-alert.mp3:', error) }),
+      gameOver: new Howl({ src: [gameOver], volume: 0.7, onloaderror: (id, error) => console.error('Failed to load game-over.mp3:', error) }),
+      victory: new Howl({ src: [victory], volume: 0.7, onloaderror: (id, error) => console.error('Failed to load victory.mp3:', error) }),
+      background: new Howl({ src: [backgroundMusic], loop: true, volume: 0.3, onloaderror: (id, error) => console.error('Failed to load background-music.mp3:', error) }),
     };
 
-    // Play background music if not muted
-    if (!muted) {
-      soundsRef.current.background.play();
-    }
-
-    // Cleanup sounds on unmount
     return () => {
-      if (soundsRef.current) {
-        Object.values(soundsRef.current).forEach(sound => sound.unload());
-        soundsRef.current = null;
-      }
+      if (soundsRef.current) Object.values(soundsRef.current).forEach(sound => sound.unload());
     };
   }, []);
 
-  // Handle mute state changes
   useEffect(() => {
     if (soundsRef.current) {
-      if (muted) {
-        soundsRef.current.background.pause();
+      if (!muted) {
+        if (!soundsRef.current.background.playing()) {
+          soundsRef.current.background.play();
+        }
       } else {
-        soundsRef.current.background.play();
+        soundsRef.current.background.stop();
       }
     }
   }, [muted]);
 
-  // Notify parent of loaded playerName
   useEffect(() => {
-    onPlayerNameLoaded(initialState.playerName);
+    onPlayerNameLoaded(playerName || "Player");
   }, [onPlayerNameLoaded]);
 
-  // Function to save game state to localStorage
+  useEffect(() => {
+    if (onLevelChange) onLevelChange(currentLevel);
+  }, [currentLevel, onLevelChange]);
+
+  useEffect(() => {
+    if (onTimerUpdate) onTimerUpdate(timeRemaining);
+    if (onTimerActive) onTimerActive(timerStarted.current && timeRemaining > 0);
+  }, [timeRemaining, onTimerUpdate, onTimerActive]);
+ 
+
+useEffect(() => {
+  // Only run timer when timer has started AND game is playing
+  if (!timerStarted.current || !isActive || gameState !== 'playing') return;
+
+  const intervalId = setInterval(() => {
+    setTimeRemaining(prev => {
+      const newTime = Math.max(0, prev - 1);
+
+      // Game over logic
+      if (newTime === 0) {
+        const collected = memoryOrbs.current.filter(o => o.collected).length;
+        if (collected < memoryOrbs.current.length) {
+          timerStarted.current = false;
+          saveGameState();
+          onGameStateChange('gameOver');
+          if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
+        }
+      }
+
+      return newTime;
+    });
+  }, 1000); // Tick every 1 second
+
+  return () => clearInterval(intervalId); // ✅ clean up when dependencies change
+}, [isActive, gameState, muted]);
+
+
   const saveGameState = () => {
     const state: SavedGameState = {
       player: { ...player.current },
@@ -155,53 +184,152 @@ export const GameCanvas = forwardRef(({
       guardians: guardians.current.map(guard => ({ ...guard })),
       memoriesCollected: memoryOrbs.current.filter(orb => orb.collected).length,
       playerName,
+      currentLevel,
+      timeRemaining,
     };
     localStorage.setItem('gameState', JSON.stringify(state));
   };
 
-  // Function to reset game state
-  const resetGameState = () => {
-    player.current = { ...defaultPlayer };
-    memoryOrbs.current = defaultOrbs.map(orb => ({ ...orb }));
-    guardians.current = defaultGuardians.map(guard => ({ ...guard }));
+  const resetGameState = (level: number = 1) => {
+    console.log(`Resetting to level ${level}`);
+    firstRender.current = true;
+    const config = getLevelConfig(level);
+    const canvas = { width: 800, height: 600 };
+
+    player.current = { x: 400, y: 300, size: 20 };
+    const newOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[] = [];
+    const newGuardians: Guardian[] = [];
+
+    for (let i = 0; i < config.orbs; i++) {
+      let attempts = 0;
+      let newOrb;
+      do {
+        newOrb = {
+          ...getRandomPosition(canvas),
+          collected: false,
+          pulse: Math.random() * Math.PI * 2,
+          collectingTime: 0,
+        };
+        attempts++;
+      } while (
+        attempts < 50 && (
+          newOrbs.some(orb => !isSafePosition(newOrb, orb)) ||
+          !isSafePosition(newOrb, player.current)
+        )
+      );
+      if (attempts < 50) {
+        newOrbs.push(newOrb);
+      } else {
+        newOrbs.push({
+          x: gameConfig.margin + i * 100,
+          y: gameConfig.margin + 100,
+          collected: false,
+          pulse: 0,
+          collectingTime: 0,
+        });
+      }
+    }
+
+    for (let i = 0; i < config.guards; i++) {
+      let attempts = 0;
+      let newGuard;
+      do {
+        const pos = getRandomPosition(canvas);
+        const isHorizontal = i % 2 === 0;
+        newGuard = {
+          x: pos.x,
+          y: pos.y,
+          direction: Math.random() > 0.5 ? 1 : -1,
+          patrol: isHorizontal
+            ? { start: gameConfig.margin, end: canvas.width - gameConfig.margin }
+            : { start: gameConfig.margin, end: canvas.height - gameConfig.margin },
+          alert: false,
+          patrolType: isHorizontal ? 'horizontal' : 'vertical',
+        };
+        attempts++;
+      } while (
+        attempts < 50 && (
+          newGuardians.some(guard => !isSafePosition(newGuard, guard)) ||
+          newOrbs.some(orb => !isSafePosition(newGuard, orb)) ||
+          !isSafePosition(newGuard, player.current)
+        )
+      );
+      if (attempts < 50) {
+        newGuardians.push(newGuard);
+      } else {
+        newGuardians.push({
+          x: gameConfig.margin + (i + 1) * 100,
+          y: canvas.height - gameConfig.margin - 100,
+          direction: 1,
+          patrol: { start: gameConfig.margin, end: canvas.width - gameConfig.margin },
+          alert: false,
+          patrolType: 'horizontal',
+        });
+      }
+    }
+
+    memoryOrbs.current = newOrbs;
+    guardians.current = newGuardians;
     previousMemoryCount.current = 0;
     alertedGuardians.current.clear();
-    localStorage.removeItem('gameState');
+    
+    timerStarted.current = true;//showinng timer always
+    lastTimerUpdate.current = Date.now();
+    setTimeRemaining(config.timer);
+    setCurrentLevel(level);
+    setGameState('playing');
+    setIsLoading(false);
     onGameStateChange('playing');
-    // Restart background music if not muted
-    if (soundsRef.current && !muted) {
-      soundsRef.current.background.stop().play();
-    }
+    console.log('Game state reset:', { orbs: newOrbs, guardians: newGuardians, player: player.current });
+    saveGameState();
   };
 
-  // Expose resetGameState to parent via ref
-  useImperativeHandle(ref, () => ({
-    reset: resetGameState,
-  }));
+  useImperativeHandle(ref, () => ({ reset: () => resetGameState(1) }));
 
   useEffect(() => {
-    if (!canvasRef.current || !isActive) return;
+    if (!canvasRef.current) {
+      console.log('Canvas ref not ready');
+      return;
+    }
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.error('Failed to get 2D context');
+      return;
+    }
 
     canvas.width = 800;
     canvas.height = 600;
 
     let animationId: number;
     let roomShift = { x: 0, y: 0, intensity: 0 };
-
     const keys: { [key: string]: boolean } = {};
+
+    const spriteImage = new Image();
+    spriteImage.src = spriteSheet;
+    spriteImage.onload = () => console.log('Player sprite loaded');
+    spriteImage.onerror = () => console.error('Failed to load player sprite');
+
+    const guardImage = new Image();
+    guardImage.src = guardSpriteSheet;
+    guardImage.onload = () => console.log('Guard sprite loaded');
+    guardImage.onerror = () => console.error('Failed to load guard sprite');
+
+    const leftImg = new Image();
+    leftImg.src = leftImage;
+    leftImg.onload = () => console.log('Left sprite loaded');
+    leftImg.onerror = () => console.error('Failed to load left sprite');
+
+    const rightImg = new Image();
+    rightImg.src = rightImage;
+    rightImg.onload = () => console.log('Right sprite loaded');
+    rightImg.onerror = () => console.error('Failed to load right sprite');
 
     const handleKeyDown = (e: KeyboardEvent) => {
       keys[e.key.toLowerCase()] = true;
-      if (e.key === 'Escape') {
-        onGameStateChange('paused');
-      }
-      if (e.key.toLowerCase() === 'r') {
-        resetGameState();
-      }
+      if (e.key === 'Escape') onGameStateChange('paused');
+      if (e.key.toLowerCase() === 'r') resetGameState(currentLevel);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -212,109 +340,90 @@ export const GameCanvas = forwardRef(({
     window.addEventListener('keyup', handleKeyUp);
 
     const render = () => {
-      if (!ctx) return;
+      if (!ctx || !isActive || isLoading) {
+        if (animationId) cancelAnimationFrame(animationId);
+        console.log('Render stopped:', { ctx: !!ctx, isActive, isLoading });
+        return;
+      }
+
+      //console.log('Rendering frame:', { orbs: memoryOrbs.current.length, guardians: guardians.current.length, player: player.current });
 
       const orbs = memoryOrbs.current;
       const guards = guardians.current;
+      const config = getLevelConfig(currentLevel);
+
+      if (orbs.some(orb => orb.collectingTime > 0)) {
+        console.log('Orb collecting, keys:', keys);
+      }
+
 
       const currentMemoryCount = orbs.filter(orb => orb.collected).length;
       if (currentMemoryCount > previousMemoryCount.current) {
-        roomShift.intensity = 1.0;
+        roomShift.intensity = 0.5;
         previousMemoryCount.current = currentMemoryCount;
-
-        // Reset guards to patrol state
-        guards.forEach(g => {
-          g.alert = false;
-        });
+        
+        timerStarted.current = true;
+        guards.forEach(g => { g.alert = false; });
         alertedGuardians.current.clear();
-
-        // Play orb collect sound
-        if (soundsRef.current && !muted) {
-          soundsRef.current.orbCollect.play();
-        }
-
-        // Save game state after orb collection
+        if (soundsRef.current && !muted) soundsRef.current.orbCollect.play();
+        onMemoryCollected();
         saveGameState();
       }
 
       if (roomShift.intensity > 0) {
-        roomShift.intensity -= 0.02;
-        roomShift.x = (Math.random() - 0.5) * roomShift.intensity * 20;
-        roomShift.y = (Math.random() - 0.5) * roomShift.intensity * 20;
+        roomShift.intensity -= 0.03;
+        roomShift.x = (Math.random() - 0.5) * roomShift.intensity * 10;
+        roomShift.y = (Math.random() - 0.5) * roomShift.intensity * 10;
       }
 
       ctx.save();
       ctx.translate(roomShift.x, roomShift.y);
 
-      // Clear canvas with dream-like gradient
+      // Draw background
       const gradient = ctx.createLinearGradient(0, 0, 800, 600);
       gradient.addColorStop(0, 'hsl(225, 25%, 8%)');
       gradient.addColorStop(0.5, 'hsl(270, 40%, 15%)');
       gradient.addColorStop(1, 'hsl(280, 30%, 20%)');
-      
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, 800, 600);
 
-      // Draw visible boundaries
+      // Draw border
       ctx.strokeStyle = 'hsl(280, 50%, 40%)';
       ctx.lineWidth = 3;
       ctx.setLineDash([10, 5]);
       ctx.strokeRect(10, 10, 780, 580);
       ctx.setLineDash([]);
 
-      // Add floating mist particles
-      ctx.save();
-      ctx.globalAlpha = 0.1;
-      for (let i = 0; i < 20; i++) {
-        const x = (Date.now() * 0.01 + i * 50) % 850;
-        const y = 100 + Math.sin(Date.now() * 0.001 + i) * 50;
-        const radius = 20 + Math.sin(Date.now() * 0.002 + i) * 10;
-        
-        const mistGradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-        mistGradient.addColorStop(0, 'hsl(240, 15%, 85%)');
-        mistGradient.addColorStop(1, 'transparent');
-        
-        ctx.fillStyle = mistGradient;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-
-      // Update and render memory orbs
-      orbs.forEach((orb) => {
+      // Draw orbs
+      orbs.forEach(orb => {
         if (orb.collected) return;
 
         orb.pulse += 0.05;
-
         const dx = player.current.x - orb.x;
         const dy = player.current.y - orb.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance < player.current.size && orb.collectingTime === 0) {
-          orb.collectingTime = 1;
+        if (distance < player.current.size + 15 && orb.collectingTime === 0) {
+          orb.collectingTime = 0.01;
+          orb.collected = true; // ✅ Mark logically collected
         }
 
         if (orb.collectingTime > 0) {
           orb.collectingTime += 0.03;
           if (orb.collectingTime >= 1) {
             orb.collected = true;
-            onMemoryCollected();
-            return;
           }
         }
 
         const glowSize = 15 + Math.sin(orb.pulse) * 5;
         const alpha = orb.collectingTime > 0 ? 1 - orb.collectingTime : 1;
-        
-        // Glow effect
+
         ctx.save();
         ctx.globalAlpha = alpha;
         const orbGradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, glowSize);
         orbGradient.addColorStop(0, 'hsl(280, 80%, 75%)');
         orbGradient.addColorStop(0.7, 'hsl(270, 70%, 65%)');
         orbGradient.addColorStop(1, 'transparent');
-        
         ctx.fillStyle = orbGradient;
         ctx.beginPath();
         ctx.arc(orb.x, orb.y, glowSize, 0, Math.PI * 2);
@@ -322,142 +431,183 @@ export const GameCanvas = forwardRef(({
         ctx.restore();
       });
 
-      // Update and render guardians
+      // Draw guardians
       guards.forEach((guardian, index) => {
-        // Check if player is within vision radius (100px)
         const dxToPlayer = player.current.x - guardian.x;
         const dyToPlayer = player.current.y - guardian.y;
         const distanceToPlayer = Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer);
-        const isPlayerInRange = distanceToPlayer < 100;
+        const isPlayerInRange = distanceToPlayer < 60 && !firstRender.current ;
 
-        // Set alert state based on player proximity
-        const wasAlert = guardian.alert;
-        guardian.alert = isPlayerInRange;
-
-        // Play guardian alert sound once per alert transition
-        if (!wasAlert && guardian.alert && !alertedGuardians.current.has(index)) {
+        if (isPlayerInRange && !guardian.alert) {
+          guardian.alert = true;
           alertedGuardians.current.add(index);
-          if (soundsRef.current && !muted) {
-            soundsRef.current.guardianAlert.play();
-          }
-        } else if (wasAlert && !guardian.alert) {
-          alertedGuardians.current.delete(index);
+          if (soundsRef.current && !muted) soundsRef.current.guardianAlert.play();
         }
 
-        // Calculate speed based on collected orbs (increase by 0.5 per orb)
-        const collectedCount = orbs.filter(orb => orb.collected).length;
-        const baseSpeed = guardian.alert ? 3 : 1.5;
-        const speed = baseSpeed + collectedCount * 0.5;
+        const baseSpeed = guardian.alert ? 2 : config.guardSpeed;
+        const speed = baseSpeed + currentMemoryCount * 0.3;
+
+        if (guardian.alert && distanceToPlayer > 5) {
+          guardian.x += (dxToPlayer / distanceToPlayer) * speed;
+          guardian.y += (dyToPlayer / distanceToPlayer) * speed;
+        } else if (!guardian.alert) {
+          if (guardian.patrolType === 'horizontal') {
+            guardian.x += guardian.direction * speed;
+            if (guardian.x >= guardian.patrol.end || guardian.x <= guardian.patrol.start) {
+              guardian.direction *= -1;
+              guardian.x = Math.max(guardian.patrol.start, Math.min(guardian.patrol.end, guardian.x));
+            }
+          } else {
+            guardian.y += guardian.direction * speed;
+            if (guardian.y >= guardian.patrol.end || guardian.y <= guardian.patrol.start) {
+              guardian.direction *= -1;
+              guardian.y = Math.max(guardian.patrol.start, Math.min(guardian.patrol.end, guardian.y));
+            }
+          }
+        }
 
         if (guardian.alert) {
-          // Chase player if within vision radius
-          if (distanceToPlayer > 5) {
-            guardian.x += (dxToPlayer / distanceToPlayer) * speed;
-            guardian.y += (dyToPlayer / distanceToPlayer) * speed;
-
-            // Wrap around canvas boundaries when chasing
-            if (guardian.x < 10) guardian.x += 780;
-            else if (guardian.x > 790) guardian.x -= 780;
-            if (guardian.y < 10) guardian.y += 580;
-            else if (guardian.y > 590) guardian.y -= 580;
-          }
-        } else {
-          // Normal patrol
-          guardian.x += guardian.direction * speed;
-          if (guardian.x >= guardian.patrol.end || guardian.x <= guardian.patrol.start) {
-            guardian.direction *= -1;
-          }
+          ctx.save();
+          ctx.strokeStyle = 'red';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(guardian.x, guardian.y, 30, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
         }
 
-        // Guardian glow
-        const guardianGradient = ctx.createRadialGradient(guardian.x, guardian.y, 0, guardian.x, guardian.y, 25);
-        guardianGradient.addColorStop(0, 'hsl(340, 60%, 60%)');
-        guardianGradient.addColorStop(1, 'transparent');
+        if (guardImage.complete) {
+          ctx.drawImage(guardImage, guardian.x - 32, guardian.y - 32, 64, 64);
+        } else {
+          ctx.fillStyle = guardian.alert ? 'red' : 'orange';
+          ctx.fillRect(guardian.x - 15, guardian.y - 15, 30, 30);
+        }
 
-        ctx.fillStyle = guardianGradient;
-        ctx.beginPath();
-        ctx.arc(guardian.x, guardian.y, 25, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Guardian body
-        ctx.fillStyle = 'hsl(340, 60%, 60%)';
-        ctx.beginPath();
-        ctx.arc(guardian.x, guardian.y, 12, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Draw guardian vision cone
-        const visionRadius = 100;
-        const visionGradient = ctx.createRadialGradient(guardian.x, guardian.y, 0, guardian.x, guardian.y, visionRadius);
-        visionGradient.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
-        visionGradient.addColorStop(1, 'rgba(255, 0, 0, 0.15)');
-
-        ctx.fillStyle = visionGradient;
-        ctx.beginPath();
-        ctx.arc(guardian.x, guardian.y, visionRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Check collision with player (game over condition)
-        if (distanceToPlayer < 30) {
+        if (distanceToPlayer < 25 && !firstRender.current) {
           saveGameState();
           onGameStateChange('gameOver');
-          if (soundsRef.current && !muted) {
-            soundsRef.current.gameOver.play();
-          }
+          if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
+          return;
         }
       });
 
-      // Handle player movement (respect boundaries)
+      // Player movement
       const speed = 3;
-      if (keys['w'] || keys['arrowup']) player.current.y = Math.max(20 + player.current.size, player.current.y - speed);
-      if (keys['s'] || keys['arrowdown']) player.current.y = Math.min(580 - player.current.size, player.current.y + speed);
-      if (keys['a'] || keys['arrowleft']) player.current.x = Math.max(20 + player.current.size, player.current.x - speed);
-      if (keys['d'] || keys['arrowright']) player.current.x = Math.min(780 - player.current.size, player.current.x + speed);
+      let direction = 'idle';
+      if (keys['w'] || keys['arrowup']) {
+        player.current.y = Math.max(20 + player.current.size, player.current.y - speed);
+        direction = 'up';
+      }
+      if (keys['s'] || keys['arrowdown']) {
+        player.current.y = Math.min(580 - player.current.size, player.current.y + speed);
+        direction = 'down';
+      }
+      if (keys['a'] || keys['arrowleft']) {
+        player.current.x = Math.max(20 + player.current.size, player.current.x - speed);
+        direction = 'left';
+      }
+      if (keys['d'] || keys['arrowright']) {
+        player.current.x = Math.min(780 - player.current.size, player.current.x + speed);
+        direction = 'right';
+      }
 
       // Render player
-      const playerGradient = ctx.createRadialGradient(player.current.x, player.current.y, 0, player.current.x, player.current.y, player.current.size);
-      playerGradient.addColorStop(0, 'hsl(240, 20%, 95%)');
-      playerGradient.addColorStop(1, 'hsl(240, 15%, 70%)');
-      
-      ctx.fillStyle = playerGradient;
-      ctx.beginPath();
-      ctx.arc(player.current.x, player.current.y, player.current.size, 0, Math.PI * 2);
-      ctx.fill();
+      if (direction === 'left' && leftImg.complete) {
+        ctx.drawImage(leftImg, player.current.x - 32, player.current.y - 32, 64, 64);
+      } else if (direction === 'right' && rightImg.complete) {
+        ctx.drawImage(rightImg, player.current.x - 32, player.current.y - 32, 64, 64);
+      } else if (spriteImage.complete) {
+        ctx.drawImage(spriteImage, player.current.x - 32, player.current.y - 32, 64, 64);
+      } else {
+        ctx.fillStyle = 'blue';
+        ctx.beginPath();
+        ctx.arc(player.current.x, player.current.y, player.current.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
-      // Check victory condition
-      if (currentMemoryCount === orbs.length) {
-        saveGameState();
-        onGameStateChange('victory');
-        if (soundsRef.current && !muted) {
-          soundsRef.current.victory.play();
+      // Timer logic
+      if (timerStarted.current && timeRemaining > 0) {
+        const now = Date.now();
+        const deltaTime = (now - lastTimerUpdate.current) / 1000;
+        lastTimerUpdate.current = now;
+      
+        const newTime = Math.max(0, timeRemaining - deltaTime);
+
+        // Only call React state update when visible time changes
+        if (Math.floor(newTime) !== Math.floor(timeRemaining)) {
+          setTimeRemaining(newTime);
         }
-        ctx.restore();
+    
+        // Game Over condition
+        // Game Over condition
+      if (newTime <= 0) {
+        const collected = memoryOrbs.current.filter(o => o.collected).length;
+        if (collected < memoryOrbs.current.length) {
+          saveGameState();
+          onGameStateChange('gameOver');
+          if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
+          return;
+          }
+        }
+      }
+    
+      // Victory condition
+      if (currentMemoryCount === orbs.length && orbs.length > 0) {
+        if (currentLevel < gameConfig.MAX_LEVELS) {
+          setIsLoading(true);
+          setLoadingMessage(`Level ${currentLevel + 1}`);
+          setTimeout(() => {
+            setIsLoading(false);
+            resetGameState(currentLevel + 1);
+            console.log('Level transition complete');
+          }, 2000);
+        } else {
+          saveGameState();
+          onGameStateChange('victory');
+          if (soundsRef.current && !muted) soundsRef.current.victory.play();
+        }
         return;
       }
-      // Restore canvas transform
-      ctx.restore();
 
+      if (firstRender.current) firstRender.current = false;
+
+      ctx.restore();
       animationId = requestAnimationFrame(render);
     };
 
-    setGameState('playing');
-    render();
+    if (isActive) {
+      console.log('Starting render loop', { isActive, gameState });
+      if (gameState === 'idle') {
+        resetGameState(1);
+      }
+      render();
+    }
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
+      if (animationId) cancelAnimationFrame(animationId);
     };
-  }, [isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted]);
+  }, [isActive, onGameStateChange, onMemoryCollected, playerName, muted, currentLevel]);
 
   return (
-    <div className="flex justify-center items-center min-h-screen">
+    <div className="flex justify-center items-center min-h-screen relative">
       <canvas
         ref={canvasRef}
         className="border-2 border-primary/30 rounded-lg shadow-2xl shadow-primary/20 bg-card"
         style={{ imageRendering: 'pixelated' }}
       />
+      {isLoading && (
+        <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50">
+          <div className="text-center space-y-4">
+            <h2 className="font-dream text-4xl font-bold text-primary animate-pulse-glow">
+              {loadingMessage}
+            </h2>
+            <p className="text-lg text-foreground">Preparing the Memory Palace...</p>
+            <div className="loader animate-spin rounded-full h-12 w-12 border-t-4 border-primary mx-auto" />
+          </div>
+        </div>
+      )}
     </div>
   );
 });

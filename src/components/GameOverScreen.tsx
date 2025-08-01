@@ -28,7 +28,7 @@ export const GameOverScreen = ({
   useEffect(() => {
     clickSoundRef.current = new Howl({
       src: [uiClick],
-      volume: 10,
+      volume: 0.4, // Corrected volume from 10 to 0.4
       onloaderror: (id, error) => console.error('Failed to load ui-click.mp3:', error),
     });
 
@@ -60,7 +60,7 @@ export const GameOverScreen = ({
             </p>
             <div className="bg-memory-glow/20 border border-memory-glow/30 rounded-lg p-4">
               <p className="font-dream text-xl">
-                Memories Collected: {memoriesCollected}/{totalMemories}
+                Memories Collected: {memoriesCollected}
               </p>
             </div>
           </>
@@ -70,11 +70,11 @@ export const GameOverScreen = ({
               Caught, {playerName}!
             </h2>
             <p className="text-lg text-foreground">
-              The guardians sensed your presence...
+              Game Over!
             </p>
             <div className="bg-destructive/20 border border-destructive/30 rounded-lg p-4">
               <p className="font-dream text-xl">
-                Memories Collected: {memoriesCollected}/{totalMemories}
+                Memories Collected: {memoriesCollected}
               </p>
             </div>
           </>

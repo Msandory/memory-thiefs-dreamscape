@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Howl } from "howler";
+import uiClick from '@/assets/audio/ui-click.mp3'; // Added import for consistency
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -15,7 +16,7 @@ export const PauseMenu = ({ onResume, onRestart, onMainMenu, muted }: PauseMenuP
   // Initialize click sound
   useEffect(() => {
     clickSoundRef.current = new Howl({
-      src: ['/assets/audio/ui-click.mp3'],
+      src: [uiClick], // Use imported audio file
       volume: 0.4,
     });
 
