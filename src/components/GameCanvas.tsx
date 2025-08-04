@@ -12,8 +12,8 @@ import guardSpriteSheet from '@/assets/sprites/guard-sprite-sheet.png';
 
 // Configuration for game levels
 const gameConfig = {
-  MAX_LEVELS: 5,
-  baseTimer: 6,
+  MAX_LEVELS: 10,
+  baseTimer: 10,
   timerIncrement: 2,
   baseGuardSpeed: 1.5,
   speedIncrement: 0.5,
@@ -595,7 +595,7 @@ useEffect(() => {
       <canvas
         ref={canvasRef}
         className="border-2 border-primary/30 rounded-lg shadow-2xl shadow-primary/20 bg-card"
-        style={{ imageRendering: 'pixelated' }}
+       // style={{ imageRendering: 'pixelated' }}
       />
       {isLoading && (
         <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50">

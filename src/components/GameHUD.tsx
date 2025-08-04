@@ -58,16 +58,16 @@ export const GameHUD = ({
 
   return (
     <div
-      className="absolute top-0 left-0 w-full h-full pointer-events-none"
+      className="absolute top-0 left-0 pointer-events-none"
       style={{
-        maxWidth: '800px',
-        maxHeight: '600px',
-        aspectRatio: '4 / 3',
+        width: '800px',
+        height: '600px',
         margin: 'auto',
-        contain: 'layout', // Ensures HUD is clipped to its bounds
+        contain: 'layout',
       }}
     >
-      <div className="absolute top-[1%] left-[1%] right-[1%] flex flex-wrap justify-between items-start gap-2 pointer-events-auto">
+      <div className="absolute top-4 left-4 right-4 flex justify-between items-start gap-4 pointer-events-auto">
+        {/* Left-aligned group: Memory orbs, score, level, timer */}
         <div className="flex flex-wrap gap-2">
           <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-2 py-1 flex items-center gap-2 min-w-0">
             <img
@@ -98,7 +98,8 @@ export const GameHUD = ({
           )}
         </div>
 
-        <div className="flex gap-1">
+        {/* Right-aligned group: Pause/mute buttons, player name, map */}
+        <div className="flex flex-wrap gap-2 items-center ml-auto" style={{ marginRight: '-555px' }}>
           <Button
             variant="ethereal"
             size="sm"
@@ -116,41 +117,52 @@ export const GameHUD = ({
           >
             {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </Button>
-        </div>
-
-        <div className="flex flex-wrap gap-2 items-center">
           <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-2 py-1 min-w-0">
             <span className="font-dream text-sm sm:text-base truncate">{playerName}</span>
           </div>
-
-          <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg p-2">
-            <div className="w-12 h-9 bg-muted/50 rounded border grid grid-cols-4 gap-px">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`${i === 5 ? 'bg-primary' : 'bg-muted/30'} rounded-sm`}
-                />
-              ))}
-            </div>
-            <span className="text-xs text-muted-foreground mt-1 block text-center">Map</span>
-          </div>
+          
         </div>
       </div>
 
-      <div className="absolute bottom-[1%] left-[1%] right-[1%]">
-        <div className="bg-card/50 backdrop-blur-sm border border-primary/30 rounded-lg px-4 py-2 text-center max-w-full">
-          <p className="font-dream text-sm sm:text-base text-foreground/90 animate-fade-in truncate">
+      <div
+        className="absolute bottom-[1%] left-[1%] right-auto"
+        style={{
+          width: '30%',
+          maxWidth: '300px',
+        }}
+      >
+        <div
+          className="bg-card/70 backdrop-blur-sm border border-primary/30 rounded-lg p-3 text-left relative shadow-lg"
+          style={{
+            background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+            color: '#e0e0e0',
+          }}
+        >
+          <p
+            className="font-dream text-sm sm:text-base text-foreground/90 animate-fade-in truncate"
+            style={{ padding: '0.25rem' }}
+          >
             {gameMessage}
           </p>
           {timerActive && timeRemaining <= 10 && timeRemaining > 0 && (
-            <p className="font-dream text-xs sm:text-sm text-red-400 animate-pulse mt-1 truncate">
+            <p
+              className="font-dream text-xs sm:text-sm text-red-400 animate-pulse mt-1 truncate"
+              style={{ padding: '0.25rem' }}
+            >
               Time is running out! Hurry!
             </p>
           )}
+          <div
+            className="absolute bottom-[-10px] left-4 w-0 h-0 border-left-[10px] border-top-[10px] border-right-[10px] border-transparent border-top-color-[#16213e]"
+            style={{
+              transform: 'rotate(45deg)',
+              borderLeftWidth: '10px',
+              borderTopWidth: '10px',
+              borderRightWidth: '10px',
+            }}
+          />
         </div>
       </div>
-
-      <div className="absolute inset-0 fog-overlay pointer-events-none" />
     </div>
   );
 };
