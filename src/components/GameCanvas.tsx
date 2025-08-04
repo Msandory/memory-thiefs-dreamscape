@@ -36,6 +36,8 @@ interface GameCanvasProps {
   onTimerUpdate?: (time: number) => void;
   onTimerActive?: (isActive: boolean) => void;
   onLevelChange?: (level: number) => void;
+  // NEW: Prop for mobile controls
+  mobileDirection?: { up: boolean; down: boolean; left: boolean; right: boolean };
 }
 
 interface Guardian {
@@ -68,6 +70,8 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
   onTimerUpdate,
   onTimerActive,
   onLevelChange,
+  // NEW: Destructure mobileDirection with a default value
+  mobileDirection = { up: false, down: false, left: false, right: false },
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
@@ -151,14 +155,11 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
  
 
 useEffect(() => {
-  // Only run timer when timer has started AND game is playing
   if (!timerStarted.current || !isActive || gameState !== 'playing') return;
 
   const intervalId = setInterval(() => {
     setTimeRemaining(prev => {
       const newTime = Math.max(0, prev - 1);
-
-      // Game over logic
       if (newTime === 0) {
         const collected = memoryOrbs.current.filter(o => o.collected).length;
         if (collected < memoryOrbs.current.length) {
@@ -168,12 +169,11 @@ useEffect(() => {
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
         }
       }
-
       return newTime;
     });
-  }, 1000); // Tick every 1 second
+  }, 1000);
 
-  return () => clearInterval(intervalId); // ✅ clean up when dependencies change
+  return () => clearInterval(intervalId);
 }, [isActive, gameState, muted]);
 
 
@@ -194,7 +194,7 @@ useEffect(() => {
     console.log(`Resetting to level ${level}`);
     firstRender.current = true;
     const config = getLevelConfig(level);
-    const canvas = { width: 800, height: 600 };
+    const canvas = { width: 800, height: 600 }; // Keep internal resolution fixed
 
     player.current = { x: 400, y: 300, size: 20 };
     const newOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[] = [];
@@ -273,32 +273,26 @@ useEffect(() => {
     previousMemoryCount.current = 0;
     alertedGuardians.current.clear();
     
-    timerStarted.current = true;//showinng timer always
+    timerStarted.current = true;
     lastTimerUpdate.current = Date.now();
     setTimeRemaining(config.timer);
     setCurrentLevel(level);
     setGameState('playing');
     setIsLoading(false);
     onGameStateChange('playing');
-    console.log('Game state reset:', { orbs: newOrbs, guardians: newGuardians, player: player.current });
     saveGameState();
   };
 
   useImperativeHandle(ref, () => ({ reset: () => resetGameState(1) }));
 
   useEffect(() => {
-    if (!canvasRef.current) {
-      console.log('Canvas ref not ready');
-      return;
-    }
+    if (!canvasRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      console.error('Failed to get 2D context');
-      return;
-    }
+    if (!ctx) return;
 
+    // Set fixed internal resolution, CSS will handle scaling
     canvas.width = 800;
     canvas.height = 600;
 
@@ -308,23 +302,12 @@ useEffect(() => {
 
     const spriteImage = new Image();
     spriteImage.src = spriteSheet;
-    spriteImage.onload = () => console.log('Player sprite loaded');
-    spriteImage.onerror = () => console.error('Failed to load player sprite');
-
     const guardImage = new Image();
     guardImage.src = guardSpriteSheet;
-    guardImage.onload = () => console.log('Guard sprite loaded');
-    guardImage.onerror = () => console.error('Failed to load guard sprite');
-
     const leftImg = new Image();
     leftImg.src = leftImage;
-    leftImg.onload = () => console.log('Left sprite loaded');
-    leftImg.onerror = () => console.error('Failed to load left sprite');
-
     const rightImg = new Image();
     rightImg.src = rightImage;
-    rightImg.onload = () => console.log('Right sprite loaded');
-    rightImg.onerror = () => console.error('Failed to load right sprite');
 
     const handleKeyDown = (e: KeyboardEvent) => {
       keys[e.key.toLowerCase()] = true;
@@ -342,20 +325,12 @@ useEffect(() => {
     const render = () => {
       if (!ctx || !isActive || isLoading) {
         if (animationId) cancelAnimationFrame(animationId);
-        console.log('Render stopped:', { ctx: !!ctx, isActive, isLoading });
         return;
       }
-
-      //console.log('Rendering frame:', { orbs: memoryOrbs.current.length, guardians: guardians.current.length, player: player.current });
 
       const orbs = memoryOrbs.current;
       const guards = guardians.current;
       const config = getLevelConfig(currentLevel);
-
-      if (orbs.some(orb => orb.collectingTime > 0)) {
-        console.log('Orb collecting, keys:', keys);
-      }
-
 
       const currentMemoryCount = orbs.filter(orb => orb.collected).length;
       if (currentMemoryCount > previousMemoryCount.current) {
@@ -379,7 +354,7 @@ useEffect(() => {
       ctx.save();
       ctx.translate(roomShift.x, roomShift.y);
 
-      // Draw background
+      // ... (Drawing logic for background and border remains the same) ...
       const gradient = ctx.createLinearGradient(0, 0, 800, 600);
       gradient.addColorStop(0, 'hsl(225, 25%, 8%)');
       gradient.addColorStop(0.5, 'hsl(270, 40%, 15%)');
@@ -387,37 +362,31 @@ useEffect(() => {
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, 800, 600);
 
-      // Draw border
       ctx.strokeStyle = 'hsl(280, 50%, 40%)';
       ctx.lineWidth = 3;
       ctx.setLineDash([10, 5]);
       ctx.strokeRect(10, 10, 780, 580);
       ctx.setLineDash([]);
 
-      // Draw orbs
+      // ... (Drawing logic for orbs and guardians remains the same) ...
       orbs.forEach(orb => {
         if (orb.collected) return;
-
         orb.pulse += 0.05;
         const dx = player.current.x - orb.x;
         const dy = player.current.y - orb.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-
         if (distance < player.current.size + 15 && orb.collectingTime === 0) {
           orb.collectingTime = 0.01;
-          orb.collected = true; // ✅ Mark logically collected
+          orb.collected = true;
         }
-
         if (orb.collectingTime > 0) {
           orb.collectingTime += 0.03;
           if (orb.collectingTime >= 1) {
             orb.collected = true;
           }
         }
-
         const glowSize = 15 + Math.sin(orb.pulse) * 5;
         const alpha = orb.collectingTime > 0 ? 1 - orb.collectingTime : 1;
-
         ctx.save();
         ctx.globalAlpha = alpha;
         const orbGradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, glowSize);
@@ -431,22 +400,18 @@ useEffect(() => {
         ctx.restore();
       });
 
-      // Draw guardians
       guards.forEach((guardian, index) => {
         const dxToPlayer = player.current.x - guardian.x;
         const dyToPlayer = player.current.y - guardian.y;
         const distanceToPlayer = Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer);
-        const isPlayerInRange = distanceToPlayer < 60 && !firstRender.current ;
-
+        const isPlayerInRange = distanceToPlayer < 60 && !firstRender.current;
         if (isPlayerInRange && !guardian.alert) {
           guardian.alert = true;
           alertedGuardians.current.add(index);
           if (soundsRef.current && !muted) soundsRef.current.guardianAlert.play();
         }
-
         const baseSpeed = guardian.alert ? 2 : config.guardSpeed;
         const speed = baseSpeed + currentMemoryCount * 0.3;
-
         if (guardian.alert && distanceToPlayer > 5) {
           guardian.x += (dxToPlayer / distanceToPlayer) * speed;
           guardian.y += (dyToPlayer / distanceToPlayer) * speed;
@@ -465,7 +430,6 @@ useEffect(() => {
             }
           }
         }
-
         if (guardian.alert) {
           ctx.save();
           ctx.strokeStyle = 'red';
@@ -475,14 +439,12 @@ useEffect(() => {
           ctx.stroke();
           ctx.restore();
         }
-
         if (guardImage.complete) {
           ctx.drawImage(guardImage, guardian.x - 32, guardian.y - 32, 64, 64);
         } else {
           ctx.fillStyle = guardian.alert ? 'red' : 'orange';
           ctx.fillRect(guardian.x - 15, guardian.y - 15, 30, 30);
         }
-
         if (distanceToPlayer < 25 && !firstRender.current) {
           saveGameState();
           onGameStateChange('gameOver');
@@ -491,22 +453,23 @@ useEffect(() => {
         }
       });
 
-      // Player movement
+
+      // MODIFIED: Player movement now checks mobileDirection prop
       const speed = 3;
       let direction = 'idle';
-      if (keys['w'] || keys['arrowup']) {
+      if (keys['w'] || keys['arrowup'] || mobileDirection.up) {
         player.current.y = Math.max(20 + player.current.size, player.current.y - speed);
         direction = 'up';
       }
-      if (keys['s'] || keys['arrowdown']) {
+      if (keys['s'] || keys['arrowdown'] || mobileDirection.down) {
         player.current.y = Math.min(580 - player.current.size, player.current.y + speed);
         direction = 'down';
       }
-      if (keys['a'] || keys['arrowleft']) {
+      if (keys['a'] || keys['arrowleft'] || mobileDirection.left) {
         player.current.x = Math.max(20 + player.current.size, player.current.x - speed);
         direction = 'left';
       }
-      if (keys['d'] || keys['arrowright']) {
+      if (keys['d'] || keys['arrowright'] || mobileDirection.right) {
         player.current.x = Math.min(780 - player.current.size, player.current.x + speed);
         direction = 'right';
       }
@@ -525,33 +488,25 @@ useEffect(() => {
         ctx.fill();
       }
 
-      // Timer logic
+      // ... (Timer, victory, and other logic remains the same) ...
       if (timerStarted.current && timeRemaining > 0) {
         const now = Date.now();
         const deltaTime = (now - lastTimerUpdate.current) / 1000;
         lastTimerUpdate.current = now;
-      
         const newTime = Math.max(0, timeRemaining - deltaTime);
-
-        // Only call React state update when visible time changes
         if (Math.floor(newTime) !== Math.floor(timeRemaining)) {
           setTimeRemaining(newTime);
         }
-    
-        // Game Over condition
-        // Game Over condition
-      if (newTime <= 0) {
-        const collected = memoryOrbs.current.filter(o => o.collected).length;
-        if (collected < memoryOrbs.current.length) {
-          saveGameState();
-          onGameStateChange('gameOver');
-          if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
-          return;
+        if (newTime <= 0) {
+          const collected = memoryOrbs.current.filter(o => o.collected).length;
+          if (collected < memoryOrbs.current.length) {
+            saveGameState();
+            onGameStateChange('gameOver');
+            if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
+            return;
           }
         }
       }
-    
-      // Victory condition
       if (currentMemoryCount === orbs.length && orbs.length > 0) {
         if (currentLevel < gameConfig.MAX_LEVELS) {
           setIsLoading(true);
@@ -559,7 +514,6 @@ useEffect(() => {
           setTimeout(() => {
             setIsLoading(false);
             resetGameState(currentLevel + 1);
-            console.log('Level transition complete');
           }, 2000);
         } else {
           saveGameState();
@@ -568,15 +522,12 @@ useEffect(() => {
         }
         return;
       }
-
       if (firstRender.current) firstRender.current = false;
-
       ctx.restore();
       animationId = requestAnimationFrame(render);
     };
 
     if (isActive) {
-      console.log('Starting render loop', { isActive, gameState });
       if (gameState === 'idle') {
         resetGameState(1);
       }
@@ -588,14 +539,15 @@ useEffect(() => {
       window.removeEventListener('keyup', handleKeyUp);
       if (animationId) cancelAnimationFrame(animationId);
     };
-  }, [isActive, onGameStateChange, onMemoryCollected, playerName, muted, currentLevel]);
+  }, [isActive, onGameStateChange, onMemoryCollected, playerName, muted, currentLevel, mobileDirection]);
 
   return (
-    <div className="flex justify-center items-center min-h-screen relative">
+    <div className="w-full h-full flex justify-center items-center relative">
       <canvas
         ref={canvasRef}
-        className="border-2 border-primary/30 rounded-lg shadow-2xl shadow-primary/20 bg-card"
-       // style={{ imageRendering: 'pixelated' }}
+        // MODIFIED: Canvas scales via CSS, internal resolution is fixed
+        className="w-full h-full border-2 border-primary/30 rounded-lg shadow-2xl shadow-primary/20 bg-card"
+        style={{ imageRendering: 'pixelated' }}
       />
       {isLoading && (
         <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50">

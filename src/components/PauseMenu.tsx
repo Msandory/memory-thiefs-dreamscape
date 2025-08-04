@@ -50,8 +50,8 @@ useEffect(() => {
   };
 
   return (
-    <div className="absolute inset-0 bg-background/80 backdrop-blur-md flex items-center justify-center z-50">
-      <div className="bg-card/90 backdrop-blur-sm border border-primary/30 rounded-lg p-8 space-y-6 min-w-80 text-center animate-fade-in">
+    <div className="absolute inset-0 bg-background/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+      <div className="bg-card/90 backdrop-blur-sm border border-primary/30 rounded-lg p-8 space-y-6 min-w-80 text-center animate-fade-in w-full max-w-sm">
         <h2 className="font-dream text-3xl font-bold text-foreground">Game Paused</h2>
         
         <div className="space-y-3">

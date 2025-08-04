@@ -62,7 +62,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
       <div className="bg-card/90 border border-primary/30 rounded-lg p-8 space-y-6 text-center animate-fade-in max-w-md w-full">
         <h1 className="font-dream text-5xl font-bold text-primary animate-pulse-glow">
           Memory Thief

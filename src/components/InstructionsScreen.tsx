@@ -33,30 +33,43 @@ export const InstructionsScreen = ({ onBack, muted }: InstructionsScreenProps) =
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="bg-card/90 border border-primary/30 rounded-lg p-8 space-y-6 text-center animate-fade-in max-w-md w-full">
+    <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+      <div className="bg-card/90 border border-primary/30 rounded-lg p-6 sm:p-8 space-y-6 text-center animate-fade-in max-w-md w-full">
         <h1 className="font-dream text-4xl font-bold text-primary">
           Instructions
         </h1>
         <p className="text-lg text-foreground">
           Navigate the memory palace to steal all memories while avoiding the guardians.
         </p>
-        <div className="text-left space-y-2">
-          <p className="font-dream text-lg">
-            <strong>Controls:</strong>
-          </p>
-          <ul className="list-disc list-inside text-foreground">
-            <li>WASD or Arrow Keys: Move the player</li>
-            <li>Escape: Pause/Unpause</li>
-            <li>R: Restart game</li>
-            <li>M: Toggle mute</li>
-          </ul>
-          <p className="font-dream text-lg">
-            <strong>Objective:</strong>
-          </p>
-          <p className="text-foreground">
-            Collect all 5 memory orbs without being caught by the guardians. Each orb collected makes guardians faster.
-          </p>
+        <div className="text-left space-y-4">
+          <div>
+            <p className="font-dream text-lg">
+              <strong>Controls (Desktop):</strong>
+            </p>
+            <ul className="list-disc list-inside text-foreground space-y-1">
+              <li>WASD or Arrow Keys: Move the player</li>
+              <li>Escape: Pause/Unpause</li>
+              <li>R: Restart game</li>
+              <li>M: Toggle mute</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-dream text-lg">
+              <strong>Controls (Mobile):</strong>
+            </p>
+            <ul className="list-disc list-inside text-foreground space-y-1">
+              <li>Use the on-screen joystick to move.</li>
+              <li>Use the on-screen buttons to pause or mute.</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-dream text-lg">
+              <strong>Objective:</strong>
+            </p>
+            <p className="text-foreground">
+              Collect all memory orbs without being caught by the guardians. Each orb collected makes guardians faster.
+            </p>
+          </div>
         </div>
         <Button
           variant="ethereal"
