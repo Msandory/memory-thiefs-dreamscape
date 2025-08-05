@@ -2,7 +2,7 @@
 
 ## Project Info
 
-**URL**: [https://memorytheftgame.netlify.app/](https://memorytheftgame.netlify.app/)
+**URL**:https://memorytheftgame.netlify.app
 
 > A browser-based stealth game where players explore a memory palace, avoid guardians, and collect hidden memories before time runs out. Built by Msandory Nkambule.
 
@@ -12,13 +12,13 @@
 
 You can work with this project in several ways:
 
-### 🔧 1. Use Your Preferred Code Editor
+## 🔧 1. Use Your Preferred Code Editor
 
 If you're comfortable with development tools, follow these steps:
 
 
 # Step 1: Clone the repository using Git.
-git clone <YOUR_GIT_REPO_URL>
+git clone (https://github.com/Msandory/memory-thiefs-dreamscape)
 
 # Step 2: Navigate to the project directory.
 cd memory-palace-thief
@@ -48,13 +48,9 @@ Click New Codespace to launch a full dev environment in your browser.
 
 🚀 Technologies Used
 Vite
-
 React
-
 TypeScript
-
 Tailwind CSS
-
 shadcn/ui
 
 📦 Deployment
@@ -75,5 +71,5 @@ Click Deploy site.
 👤 Author
 Developed by Msandory Nkambule
 🎮 Built with love, memory, and stealth
-📧 [YourEmail@example.com] (optional)
+📧 [msandory@gmail.com]
 🌐 https://memorytheftgame.netlify.app
