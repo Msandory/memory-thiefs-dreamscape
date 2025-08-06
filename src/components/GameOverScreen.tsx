@@ -1,14 +1,14 @@
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Howl } from "howler";
-import uiClick from '@/assets/audio/ui-click.mp3'; // Assuming you’re importing audio
+import uiClick from '@/assets/audio/ui-click.mp3';
 
 interface GameOverScreenProps {
   isVictory: boolean;
   memoriesCollected: number;
   totalMemories: number;
   playerName: string;
-  onRestart: () => void;
+  onRetry: () => void; // MODIFIED: Renamed from onRestart to onRetry for clarity
   onMainMenu: () => void;
   muted: boolean;
 }
@@ -18,29 +18,17 @@ export const GameOverScreen = ({
   memoriesCollected,
   totalMemories,
   playerName,
-  onRestart,
+  onRetry, // MODIFIED
   onMainMenu,
   muted,
 }: GameOverScreenProps) => {
   const clickSoundRef = useRef<Howl | null>(null);
 
-  // Initialize click sound
   useEffect(() => {
-    clickSoundRef.current = new Howl({
-      src: [uiClick],
-      volume: 0.4, // Corrected volume from 10 to 0.4
-      onloaderror: (id, error) => console.error('Failed to load ui-click.mp3:', error),
-    });
-
-    return () => {
-      if (clickSoundRef.current) {
-        clickSoundRef.current.unload();
-        clickSoundRef.current = null;
-      }
-    };
+    clickSoundRef.current = new Howl({ src: [uiClick], volume: 0.4 });
+    return () => { clickSoundRef.current?.unload(); };
   }, []);
 
-  // Play click sound if not muted
   const playClickSound = () => {
     if (clickSoundRef.current && !muted) {
       clickSoundRef.current.play();
@@ -70,7 +58,7 @@ export const GameOverScreen = ({
               Oh No, {playerName}!
             </h2>
             <p className="text-lg text-foreground">
-              Game Over!
+              You were caught by the guardians.
             </p>
             <div className="bg-destructive/20 border border-destructive/30 rounded-lg p-4">
               <p className="font-dream text-xl">
@@ -81,24 +69,38 @@ export const GameOverScreen = ({
         )}
 
         <div className="space-y-3">
-          <Button
-            variant="dream"
-            size="lg"
-            onClick={() => {
-              playClickSound();
-              onRestart();
-            }}
-            className="w-full"
-          >
-            Try Again
-          </Button>
+          {/* MODIFIED: The button for retrying is different for victory vs. game over */}
+          {!isVictory ? (
+            <Button
+              variant="dream"
+              size="lg"
+              onClick={() => {
+                playClickSound();
+                onRetry(); // MODIFIED: Call onRetry
+              }}
+              className="w-full"
+            >
+              Try Again (with penalty)
+            </Button>
+          ) : (
+             <Button
+              variant="dream"
+              size="lg"
+              onClick={() => {
+                playClickSound();
+                onMainMenu(); // On victory, this button can just go to main menu
+              }}
+              className="w-full"
+            >
+              Play Again
+            </Button>
+          )}
 
           <Button
             variant="ethereal"
             size="lg"
             onClick={() => {
               playClickSound();
-              console.log('Main Menu button clicked, calling onMainMenu');
               onMainMenu();
             }}
             className="w-full"
