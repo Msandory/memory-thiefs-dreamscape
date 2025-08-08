@@ -18,40 +18,91 @@ interface SavedGameState {
   // ... other saved state properties
 }
 
-// Virtual Joystick component (unchanged)
-const VirtualJoystick = ({ onMove }: { onMove: (dir: { up: boolean, down: boolean, left: boolean, right: boolean }) => void }) => {
-  const stickRef = useRef<HTMLDivElement>(null);
-  const baseRef = useRef<HTMLDivElement>(null);
-  const dragStart = useRef<{ x: number, y: number } | null>(null);
-  const touchId = useRef<number | null>(null);
+const VirtualArrowKeys = ({ onMove, onSpacePress }: { onMove: (dir: { up: boolean, down: boolean, left: boolean, right: boolean }) => void; onSpacePress: () => void }) => {
+  const [direction, setDirection] = useState({ up: false, down: false, left: false, right: false });
 
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.preventDefault(); const touch = e.changedTouches[0];
-    if (touch && baseRef.current) {
-      touchId.current = touch.identifier; const baseRect = baseRef.current.getBoundingClientRect();
-      dragStart.current = { x: baseRect.left + baseRect.width / 2, y: baseRect.top + baseRect.height / 2 };
-    }
+  // Handle button press (touch start or mouse down)
+  const handlePress = (key: keyof typeof direction) => {
+    setDirection((prev) => {
+      const newDirection = { ...prev, [key]: true };
+      onMove(newDirection);
+      return newDirection;
+    });
   };
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.preventDefault(); if (dragStart.current === null || touchId.current === null) return;
-    const touch = Array.from(e.changedTouches).find((t) => t.identifier === touchId.current);
-    if (!touch || !stickRef.current || !baseRef.current) return;
-    const baseRect = baseRef.current.getBoundingClientRect(); const maxDistance = baseRect.width / 2 - stickRef.current.offsetWidth / 2;
-    const dx = touch.clientX - dragStart.current.x; const dy = touch.clientY - dragStart.current.y;
-    const distance = Math.sqrt(dx * dx + dy * dy); const angle = Math.atan2(dy, dx);
-    const stickX = Math.min(maxDistance, distance) * Math.cos(angle); const stickY = Math.min(maxDistance, distance) * Math.sin(angle);
-    stickRef.current.style.transform = `translate(${stickX}px, ${stickY}px)`;
-    const deadZone = 0.2; const normX = dx / maxDistance; const normY = dy / maxDistance;
-    onMove({ up: normY < -deadZone, down: normY > deadZone, left: normX < -deadZone, right: normX > deadZone });
+
+  // Handle button release (touch end or mouse up)
+  const handleRelease = (key: keyof typeof direction) => {
+    setDirection((prev) => {
+      const newDirection = { ...prev, [key]: false };
+      onMove(newDirection);
+      return newDirection;
+    });
   };
-  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.preventDefault(); const touchEnded = Array.from(e.changedTouches).some((t) => t.identifier === touchId.current);
-    if (!touchEnded) return;
-    dragStart.current = null; touchId.current = null;
-    if (stickRef.current) { stickRef.current.style.transform = `translate(0px, 0px)`; }
-    onMove({ up: false, down: false, left: false, right: false });
-  };
-  return ( <div ref={baseRef} className="fixed bottom-8 left-8 w-32 h-32 bg-slate-400/50 backdrop-blur-sm rounded-full flex items-center justify-center touch-none z-40" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd} > <div ref={stickRef} className="w-16 h-16 bg-slate-200/70 rounded-full pointer-events-none transition-transform duration-75" ></div> </div> );
+
+  return (
+    <div className="fixed bottom-12 left-1/2 transform -translate-x-1/2 grid grid-cols-4 grid-rows-2 gap-3 w-60 h-36 z-40">
+      {/* Up Button */}
+      <div className="col-start-2 row-start-1">
+        <button
+          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
+          onTouchStart={() => handlePress('up')}
+          onTouchEnd={() => handleRelease('up')}
+          onMouseDown={() => handlePress('up')}
+          onMouseUp={() => handleRelease('up')}
+        >
+          ↑
+        </button>
+      </div>
+      {/* Left Button */}
+      <div className="col-start-1 row-start-2">
+        <button
+          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
+          onTouchStart={() => handlePress('left')}
+          onTouchEnd={() => handleRelease('left')}
+          onMouseDown={() => handlePress('left')}
+          onMouseUp={() => handleRelease('left')}
+        >
+          ←
+        </button>
+      </div>
+      {/* Right Button */}
+      <div className="col-start-3 row-start-2">
+        <button
+          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
+          onTouchStart={() => handlePress('right')}
+          onTouchEnd={() => handleRelease('right')}
+          onMouseDown={() => handlePress('right')}
+          onMouseUp={() => handleRelease('right')}
+        >
+          →
+        </button>
+      </div>
+      {/* Down Button */}
+      <div className="col-start-2 row-start-2">
+        <button
+          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
+          onTouchStart={() => handlePress('down')}
+          onTouchEnd={() => handleRelease('down')}
+          onMouseDown={() => handlePress('down')}
+          onMouseUp={() => handleRelease('down')}
+        >
+          ↓
+        </button>
+      </div>
+      {/* Space Button */}
+      <div className="col-start-4 row-start-1 row-span-2">
+        <button
+          className="w-14 h-[116px] bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-xl"
+          onTouchStart={onSpacePress}
+          onTouchEnd={(e) => e.preventDefault()} // Prevent default to avoid scrolling
+          onMouseDown={onSpacePress}
+          onMouseUp={(e) => e.preventDefault()}
+        >
+          SPACE
+        </button>
+      </div>
+    </div>
+  );
 };
 
 const Index = () => {
@@ -66,10 +117,9 @@ const Index = () => {
   const [timerActive, setTimerActive] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileDirection, setMobileDirection] = useState({ up: false, down: false, left: false, right: false });
-  const [difficulty, setDifficulty] = useState<Difficulty>('medium'); // NEW: Difficulty state
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
 
-  // MODIFIED: Added retry method to ref type
-  const gameCanvasRef = useRef<{ reset: () => void; retry: () => void; }>(null);
+  const gameCanvasRef = useRef<{ reset: () => void; retry: () => void; useThunder: () => void }>(null);
   const backgroundMusicRef = useRef<Howl | null>(null);
   
   useEffect(() => { setIsMobile(/Mobi|Android/i.test(navigator.userAgent) || window.innerWidth < 768); }, []);
@@ -92,10 +142,9 @@ const Index = () => {
   useEffect(() => { localStorage.setItem('muted', JSON.stringify(muted)); }, [muted]);
   useEffect(() => { localStorage.setItem('playerName', playerName); }, [playerName]);
 
-  // MODIFIED: handleStartGame now accepts and sets difficulty
   const handleStartGame = useCallback((name: string, selectedDifficulty: Difficulty) => {
     setPlayerName(name);
-    setDifficulty(selectedDifficulty); // Set difficulty
+    setDifficulty(selectedDifficulty);
     setGameState('playing');
     setMemoriesCollected(0);
     setScore(0);
@@ -103,15 +152,12 @@ const Index = () => {
     setTimeRemaining(0);
     setTimerActive(false);
     setGameMessage(`${name}, you feel the ancient presence...`);
-   //toast("The memory palace awakens...", {
-     // description: isMobile ? "Use the joystick to move." : "Use WASD or Arrow Keys to move.",
-   // });
     gameCanvasRef.current?.reset();
-  }, [isMobile]);
+  }, []);
 
   const handleGameStateChange = useCallback((state: 'playing' | 'paused' | 'gameOver' | 'victory') => {
     setGameState(state);
-    if (state === 'gameOver') { setGameMessage("The guardians have sensed your presence!"); setTimerActive(false); toast.error("You were caught!"); } 
+    if (state === 'gameOver') { setGameMessage("The guardians have sensed your presence!"); setTimerActive(false);  } 
     else if (state === 'victory') { setGameMessage("You have successfully stolen all the memories!"); setTimerActive(false); toast.success("Victory!"); }
     else if (state === 'paused') { setGameMessage("The palace waits in silence..."); }
     else if (state === 'playing') { setGameMessage(`${playerName}, you feel the ancient presence...`); }
@@ -122,28 +168,19 @@ const Index = () => {
     const newScore = score + 100;
     setMemoriesCollected(newCount);
     setScore(newScore);
-    // Note: totalMemories is calculated in GameHUD, this message is simplified
-    //setGameMessage(``);
-    //toast(``);
   }, [memoriesCollected, score]);
   
-  // Full reset to level 1 (used by Pause Menu)
   const handleRestart = useCallback(() => {
     setGameState('playing');
     setMemoriesCollected(0);
     setScore(0);
-    //setGameMessage(`${playerName}, the palace resets...`);
     gameCanvasRef.current?.reset();
   }, [playerName]);
 
-  // NEW: Retry with penalty (used by Game Over screen)
   const handleRetry = useCallback(() => {
     setGameState('playing');
-    setMemoriesCollected(0); // Reset orbs for the retried level
-    // Score could be kept or halved, for now we reset it for the level
-    setScore(prev => Math.floor(prev / 2)); // Example: Halve score as part of penalty
-    //setGameMessage(`${playerName}, you try again with caution...`);
-  //  toast.warning("Retrying with a penalty. You've been sent back one level.");
+    setMemoriesCollected(0);
+    setScore(prev => Math.floor(prev / 2));
     gameCanvasRef.current?.retry();
   }, [playerName]);
 
@@ -155,6 +192,13 @@ const Index = () => {
   const handleTimerUpdate = useCallback((time: number) => setTimeRemaining(time), []);
   const handleTimerActive = useCallback((isActive: boolean) => setTimerActive(isActive), []);
   const handleLevelChange = useCallback((level: number) => setCurrentLevel(level), []);
+
+  // NEW: Callback to trigger useThunder from GameCanvas
+  const handleSpacePress = useCallback(() => {
+    if (gameCanvasRef.current?.useThunder) {
+      gameCanvasRef.current.useThunder();
+    }
+  }, []);
 
   return (
     <div className="min-h-screen w-screen h-screen relative overflow-hidden bg-background">
@@ -182,7 +226,7 @@ const Index = () => {
               onTimerActive={handleTimerActive}
               onLevelChange={handleLevelChange}
               mobileDirection={mobileDirection}
-              difficulty={difficulty} // MODIFIED: Pass difficulty state
+              difficulty={difficulty}
             />
             <GameHUD
               memoriesCollected={memoriesCollected}
@@ -205,16 +249,16 @@ const Index = () => {
               <GameOverScreen 
                 isVictory={gameState === 'victory'} 
                 memoriesCollected={memoriesCollected} 
-                totalMemories={0} /* This can be removed or calculated if needed */
+                totalMemories={0}
                 playerName={playerName} 
-                onRetry={handleRetry} // MODIFIED: Pass handleRetry
+                onRetry={handleRetry}
                 onMainMenu={handleMainMenu} 
                 muted={muted} 
               />
             )}
           </div>
           {isMobile && gameState === 'playing' && (
-             <VirtualJoystick onMove={setMobileDirection} />
+            <VirtualArrowKeys onMove={setMobileDirection} onSpacePress={handleSpacePress} />
           )}
         </div>
       )}

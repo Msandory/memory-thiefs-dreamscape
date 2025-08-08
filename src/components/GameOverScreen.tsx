@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Howl } from "howler";
+import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 import uiClick from '@/assets/audio/ui-click.mp3';
 
-// --- NEW: SCOREBOARD COMPONENT & HELPERS (reused from InstructionsScreen) ---
-// In a real application, this would be a shared component in its own file.
-
+// --- UPDATED SCOREBOARD COMPONENT ---
 interface ScoreEntry {
   playerName: string;
   time: number; // in seconds
@@ -27,30 +27,50 @@ const difficultyWeights = {
 
 const ScoreboardContent = () => {
   const [scores, setScores] = useState<ScoreEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const storedScores = localStorage.getItem('gameScores');
-      if (storedScores) {
-        const parsedScores: ScoreEntry[] = JSON.parse(storedScores);
-        parsedScores.sort((a, b) => {
+    async function fetchScores() {
+      try {
+        const q = query(collection(db, "scores"), orderBy("time", "asc"), limit(10));
+        const querySnapshot = await getDocs(q);
+        const firebaseScores: ScoreEntry[] = [];
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          firebaseScores.push({
+            playerName: data.playerName,
+            time: data.time,
+            difficulty: data.difficulty,
+            date: data.date,
+          });
+        });
+
+        // Sort with difficulty weighting (lower time / weight = better)
+        firebaseScores.sort((a, b) => {
           const scoreA = a.time / difficultyWeights[a.difficulty];
           const scoreB = b.time / difficultyWeights[b.difficulty];
           return scoreA - scoreB;
         });
-        setScores(parsedScores);
+
+        setScores(firebaseScores);
+        setError(null);
+      } catch (error) {
+        console.error("Error fetching scores:", error);
+        setError("404 Not Found: Unable to load scores. Please check your connection.");
       }
-    } catch (error) {
-      console.error("Failed to load scores:", error);
-      setScores([]);
     }
+
+    fetchScores();
   }, []);
 
   return (
     <div className="animate-fade-in space-y-4 text-center">
       <h1 className="font-dream text-4xl font-bold text-primary">Scoreboard</h1>
       <p className="text-muted-foreground">See how you rank among the greats!</p>
-      {scores.length > 0 ? (
+      {error ? (
+        <p className="text-destructive py-8">{error}</p>
+      ) : scores.length > 0 ? (
         <table className="w-full text-left text-sm sm:text-base">
           <thead>
             <tr className="border-b border-primary/20 text-muted-foreground">
@@ -66,10 +86,17 @@ const ScoreboardContent = () => {
                 <td className="p-2 font-bold text-primary">{index + 1}</td>
                 <td className="p-2 truncate">{score.playerName}</td>
                 <td className="p-2">{formatTime(score.time)}</td>
-                <td className={`p-2 capitalize font-semibold ${
-                  score.difficulty === 'hard' ? 'text-red-400' : 
-                  score.difficulty === 'medium' ? 'text-yellow-400' : 'text-green-400'
-                }`}>{score.difficulty}</td>
+                <td
+                  className={`p-2 capitalize font-semibold ${
+                    score.difficulty === 'hard'
+                      ? 'text-red-400'
+                      : score.difficulty === 'medium'
+                      ? 'text-yellow-400'
+                      : 'text-green-400'
+                  }`}
+                >
+                  {score.difficulty}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -81,9 +108,7 @@ const ScoreboardContent = () => {
   );
 };
 
-
-// --- MODIFIED GameOverScreen COMPONENT ---
-
+// --- GameOverScreen COMPONENT ---
 interface GameOverScreenProps {
   isVictory: boolean;
   memoriesCollected: number;
@@ -104,12 +129,13 @@ export const GameOverScreen = ({
   muted,
 }: GameOverScreenProps) => {
   const clickSoundRef = useRef<Howl | null>(null);
-  // NEW: State to manage tabs on the victory screen
   const [activeTab, setActiveTab] = useState<'summary' | 'scoreboard'>('summary');
 
   useEffect(() => {
     clickSoundRef.current = new Howl({ src: [uiClick], volume: 0.4 });
-    return () => { clickSoundRef.current?.unload(); };
+    return () => {
+      clickSoundRef.current?.unload();
+    };
   }, []);
 
   const playClickSound = () => {
@@ -127,20 +153,25 @@ export const GameOverScreen = ({
     <div className="absolute inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
       <div className="bg-card/90 backdrop-blur-sm border border-primary/30 rounded-lg p-6 sm:p-8 space-y-6 min-w-[24rem] text-center animate-fade-in w-full max-w-xl">
         {isVictory ? (
-          // --- NEW: VICTORY SCREEN WITH TABS ---
           <>
             <div className="flex justify-center border-b border-primary/20 mb-4">
-              <Button 
-                variant={activeTab === 'summary' ? 'ghost' : 'link'} 
-                className={`font-dream text-lg transition-colors ${activeTab === 'summary' ? 'text-primary' : 'text-muted-foreground hover:text-primary/80'}`} 
-                onClick={() => handleTabChange('summary')}>
-                  Summary
+              <Button
+                variant={activeTab === 'summary' ? 'ghost' : 'link'}
+                className={`font-dream text-lg transition-colors ${
+                  activeTab === 'summary' ? 'text-primary' : 'text-muted-foreground hover:text-primary/80'
+                }`}
+                onClick={() => handleTabChange('summary')}
+              >
+                Summary
               </Button>
-              <Button 
-                variant={activeTab === 'scoreboard' ? 'ghost' : 'link'} 
-                className={`font-dream text-lg transition-colors ${activeTab === 'scoreboard' ? 'text-primary' : 'text-muted-foreground hover:text-primary/80'}`} 
-                onClick={() => handleTabChange('scoreboard')}>
-                  Scoreboard
+              <Button
+                variant={activeTab === 'scoreboard' ? 'ghost' : 'link'}
+                className={`font-dream text-lg transition-colors ${
+                  activeTab === 'scoreboard' ? 'text-primary' : 'text-muted-foreground hover:text-primary/80'
+                }`}
+                onClick={() => handleTabChange('scoreboard')}
+              >
+                Scoreboard
               </Button>
             </div>
 
@@ -150,13 +181,9 @@ export const GameOverScreen = ({
                   <h2 className="font-dream text-4xl font-bold text-primary animate-pulse-glow">
                     Victory, {playerName}!
                   </h2>
-                  <p className="text-lg text-foreground">
-                    You escaped with all the memories!
-                  </p>
+                  <p className="text-lg text-foreground">You escaped with all the memories!</p>
                   <div className="bg-memory-glow/20 border border-memory-glow/30 rounded-lg p-4">
-                    <p className="font-dream text-xl">
-                      Memories Collected: {memoriesCollected}
-                    </p>
+                    <p className="font-dream text-xl">Memories Collected: {memoriesCollected}</p>
                   </div>
                 </div>
               ) : (
@@ -165,18 +192,11 @@ export const GameOverScreen = ({
             </div>
           </>
         ) : (
-          // --- ORIGINAL GAME OVER SCREEN (UNCHANGED) ---
           <>
-            <h2 className="font-dream text-4xl font-bold text-destructive">
-              Oh No, {playerName}!
-            </h2>
-            <p className="text-lg text-foreground">
-              You were caught by the guardians.
-            </p>
+            <h2 className="font-dream text-4xl font-bold text-destructive">Oh No, {playerName}!</h2>
+            <p className="text-lg text-foreground">You were caught by the guardians.</p>
             <div className="bg-destructive/20 border border-destructive/30 rounded-lg p-4">
-              <p className="font-dream text-xl">
-                Memories Collected: {memoriesCollected}
-              </p>
+              <p className="font-dream text-xl">Memories Collected: {memoriesCollected}</p>
             </div>
           </>
         )}
@@ -186,16 +206,22 @@ export const GameOverScreen = ({
             <Button
               variant="dream"
               size="lg"
-              onClick={() => { playClickSound(); onRetry(); }}
+              onClick={() => {
+                playClickSound();
+                onRetry();
+              }}
               className="w-full"
             >
               Try Again (with penalty)
             </Button>
           ) : (
-             <Button
+            <Button
               variant="dream"
               size="lg"
-              onClick={() => { playClickSound(); onMainMenu(); }}
+              onClick={() => {
+                playClickSound();
+                onMainMenu();
+              }}
               className="w-full"
             >
               Play Again
@@ -205,7 +231,10 @@ export const GameOverScreen = ({
           <Button
             variant="ethereal"
             size="lg"
-            onClick={() => { playClickSound(); onMainMenu(); }}
+            onClick={() => {
+              playClickSound();
+              onMainMenu();
+            }}
             className="w-full"
           >
             Main Menu
