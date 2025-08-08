@@ -1,73 +1,75 @@
-# Welcome to your Lovable project
+# Memory Palace Thief
 
-## Project info
+## Project Info
 
-**URL**: https://lovable.dev/projects/b1d8cc60-dea5-43d3-bcd0-f41a607eb952
+**URL**:https://memorytheftgame.netlify.app
 
-## How can I edit this code?
+> A browser-based stealth game where players explore a memory palace, avoid guardians, and collect hidden memories before time runs out. Built by Msandory Nkambule.
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## 🛠️ How to Edit This Code
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/b1d8cc60-dea5-43d3-bcd0-f41a607eb952) and start prompting.
+You can work with this project in several ways:
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🔧 1. Use Your Preferred Code Editor
 
-**Use your preferred IDE**
+If you're comfortable with development tools, follow these steps:
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Step 1: Clone the repository using Git.
+git clone (https://github.com/Msandory/memory-thiefs-dreamscape)
 
 # Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+cd memory-palace-thief
 
-# Step 3: Install the necessary dependencies.
-npm i
+# Step 3: Install the dependencies.
+npm install
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Run the development server.
 npm run dev
-```
+You need to have Node.js and npm installed on your machine.
 
-**Edit a file directly in GitHub**
+📝 2. Edit Files Directly on GitHub
+Open your repo on GitHub.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Navigate to the file you want to edit.
 
-**Use GitHub Codespaces**
+Click the pencil icon (✏️) in the top-right corner.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Make changes and commit them.
 
-## What technologies are used for this project?
+💻 3. Use GitHub Codespaces (Optional)
+Go to the main page of the repo.
 
-This project is built with:
+Click the Code button → open the Codespaces tab.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Click New Codespace to launch a full dev environment in your browser.
 
-## How can I deploy this project?
+🚀 Technologies Used
+Vite
+React
+TypeScript
+Tailwind CSS
+shadcn/ui
 
-Simply open [Lovable](https://lovable.dev/projects/b1d8cc60-dea5-43d3-bcd0-f41a607eb952) and click on Share -> Publish.
+📦 Deployment
+This game is deployed using Netlify.
 
-## Can I connect a custom domain to my Lovable project?
+If you'd like to set up your own deployment:
 
-Yes, you can!
+Push this repo to GitHub.
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+Create a free account at Netlify.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Click "New site from Git" and link your GitHub repo.
+
+Netlify will auto-detect the build settings (npm run build, dist).
+
+Click Deploy site.
+
+👤 Author
+Developed by Msandory Nkambule
+🎮 Built with love, memory, and stealth
+📧 [msandory@gmail.com]
+🌐 https://memorytheftgame.netlify.app

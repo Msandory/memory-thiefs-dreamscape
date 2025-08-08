@@ -4,42 +4,36 @@ import { Input } from "@/components/ui/input";
 import { Howl } from "howler";
 import uiClick from '@/assets/audio/ui-click.mp3';
 
+type Difficulty = 'easy' | 'medium' | 'hard';
+
 interface MainMenuProps {
-  onStartGame: (name: string) => void;
+  onStartGame: (name: string, difficulty: Difficulty) => void; // MODIFIED: Add difficulty
   onShowInstructions: () => void;
   muted: boolean;
   savedPlayerName: string;
-  onClearPlayerName: () => void; // NEW: Add prop for clearing saved name
+  onClearPlayerName: () => void;
 }
 
 export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerName, onClearPlayerName }: MainMenuProps) => {
   const [playerName, setPlayerName] = useState(savedPlayerName);
-  const [showNameInput, setShowNameInput] = useState(!savedPlayerName); // NEW: Control whether to show input
+  const [showNameInput, setShowNameInput] = useState(!savedPlayerName);
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium'); // NEW: Difficulty state
   const clickSoundRef = useRef<Howl | null>(null);
 
-  // Initialize click sound
   useEffect(() => {
     clickSoundRef.current = new Howl({
       src: [uiClick],
       volume: 0.4,
       onloaderror: (id, error) => console.error('Failed to load ui-click.mp3:', error),
     });
-
-    return () => {
-      if (clickSoundRef.current) {
-        clickSoundRef.current.unload();
-        clickSoundRef.current = null;
-      }
-    };
+    return () => { clickSoundRef.current?.unload(); };
   }, []);
 
-  // NEW: Update local state when savedPlayerName changes
   useEffect(() => {
     setPlayerName(savedPlayerName);
     setShowNameInput(!savedPlayerName);
   }, [savedPlayerName]);
 
-  // Play click sound if not muted
   const playClickSound = () => {
     if (clickSoundRef.current && !muted) {
       clickSoundRef.current.play();
@@ -49,16 +43,15 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
   const handleSubmit = () => {
     if (playerName.trim()) {
       playClickSound();
-      onStartGame(playerName.trim());
+      onStartGame(playerName.trim(), difficulty); // MODIFIED: Pass difficulty
     }
   };
 
-  // NEW: Handle changing name
   const handleChangeName = () => {
     playClickSound();
     setShowNameInput(true);
     setPlayerName('');
-    onClearPlayerName(); // Clear the saved name in parent component
+    onClearPlayerName();
   };
 
   return (
@@ -70,8 +63,24 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
         <p className="text-lg text-foreground">
           Steal the memories, evade the guardians.
         </p>
+        
+        {/* NEW: Difficulty Selection */}
+        <div className="space-y-2">
+          <p className="font-dream text-lg text-foreground">Choose Difficulty</p>
+          <div className="flex justify-center gap-2">
+            {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+              <Button
+                key={d}
+                variant={difficulty === d ? 'dream' : 'ethereal'}
+                onClick={() => { playClickSound(); setDifficulty(d); }}
+                className="capitalize w-full"
+              >
+                {d}
+              </Button>
+            ))}
+          </div>
+        </div>
 
-        {/* UPDATED: Use showNameInput instead of checking savedPlayerName directly */}
         {savedPlayerName && !showNameInput ? (
           <div className="space-y-2">
             <p className="text-lg font-dream text-primary">
@@ -82,7 +91,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
               size="lg"
               onClick={() => {
                 playClickSound();
-                onStartGame(savedPlayerName);
+                onStartGame(savedPlayerName, difficulty); // MODIFIED: Pass difficulty
               }}
               className="w-full"
             >
@@ -91,7 +100,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
             <Button
               variant="ethereal"
               size="sm"
-              onClick={handleChangeName} // UPDATED: Use the new handler
+              onClick={handleChangeName}
               className="w-full"
             >
               Change Name
@@ -105,12 +114,8 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
               className="border-primary/50 focus:ring-primary"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && playerName.trim()) {
-                  handleSubmit();
-                }
-              }}
-              autoFocus // NEW: Auto-focus the input when it appears
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+              autoFocus
             />
             <Button
               variant="dream"
@@ -121,16 +126,11 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
             >
               Start Game
             </Button>
-            {/* NEW: Show "Back" button if there was a saved name */}
             {savedPlayerName && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  playClickSound();
-                  setShowNameInput(false);
-                  setPlayerName(savedPlayerName);
-                }}
+                onClick={() => { playClickSound(); setShowNameInput(false); setPlayerName(savedPlayerName); }}
                 className="w-full"
               >
                 Back
@@ -142,10 +142,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
         <Button
           variant="ethereal"
           size="lg"
-          onClick={() => {
-            playClickSound();
-            onShowInstructions();
-          }}
+          onClick={() => { playClickSound(); onShowInstructions(); }}
           className="w-full"
         >
           Instructions
