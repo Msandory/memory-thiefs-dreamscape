@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Howl } from "howler";
 import uiClick from '@/assets/audio/ui-click.mp3';
-
+import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { db } from "../firebaseConfig"; 
 // --- NEW: SCOREBOARD COMPONENT ---
 // This component fetches, sorts, and displays the scoreboard.
 
@@ -31,24 +32,36 @@ const ScoreboardContent = () => {
   const [scores, setScores] = useState<ScoreEntry[]>([]);
 
   useEffect(() => {
-    try {
-      const storedScores = localStorage.getItem('gameScores');
-      if (storedScores) {
-        const parsedScores: ScoreEntry[] = JSON.parse(storedScores);
-        
-        // Sort scores: lower is better. We divide time by difficulty weight.
-        parsedScores.sort((a, b) => {
+    async function fetchScores() {
+      try {
+        const q = query(collection(db, "scores"), orderBy("time", "asc"), limit(10));
+        const querySnapshot = await getDocs(q);
+        const firebaseScores: ScoreEntry[] = [];
+  
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          firebaseScores.push({
+            playerName: data.playerName,
+            time: data.time,
+            difficulty: data.difficulty,
+            date: data.date,
+          });
+        });
+  
+        // Sort with difficulty weighting (lower time / weight = better)
+        firebaseScores.sort((a, b) => {
           const scoreA = a.time / difficultyWeights[a.difficulty];
           const scoreB = b.time / difficultyWeights[b.difficulty];
           return scoreA - scoreB;
         });
-        
-        setScores(parsedScores);
+  
+        setScores(firebaseScores);
+      } catch (error) {
+        console.error("Error fetching scores:", error);
       }
-    } catch (error) {
-      console.error("Failed to load scores:", error);
-      setScores([]);
     }
+  
+    fetchScores();
   }, []);
 
   return (

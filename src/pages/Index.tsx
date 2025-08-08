@@ -103,9 +103,9 @@ const Index = () => {
     setTimeRemaining(0);
     setTimerActive(false);
     setGameMessage(`${name}, you feel the ancient presence...`);
-    toast("The memory palace awakens...", {
-      description: isMobile ? "Use the joystick to move." : "Use WASD or Arrow Keys to move.",
-    });
+   //toast("The memory palace awakens...", {
+     // description: isMobile ? "Use the joystick to move." : "Use WASD or Arrow Keys to move.",
+   // });
     gameCanvasRef.current?.reset();
   }, [isMobile]);
 
@@ -123,8 +123,8 @@ const Index = () => {
     setMemoriesCollected(newCount);
     setScore(newScore);
     // Note: totalMemories is calculated in GameHUD, this message is simplified
-    setGameMessage(`A memory whispers its secrets...`);
-    toast(`Memory collected!`);
+    //setGameMessage(``);
+    //toast(``);
   }, [memoriesCollected, score]);
   
   // Full reset to level 1 (used by Pause Menu)
@@ -132,7 +132,7 @@ const Index = () => {
     setGameState('playing');
     setMemoriesCollected(0);
     setScore(0);
-    setGameMessage(`${playerName}, the palace resets...`);
+    //setGameMessage(`${playerName}, the palace resets...`);
     gameCanvasRef.current?.reset();
   }, [playerName]);
 
@@ -142,8 +142,8 @@ const Index = () => {
     setMemoriesCollected(0); // Reset orbs for the retried level
     // Score could be kept or halved, for now we reset it for the level
     setScore(prev => Math.floor(prev / 2)); // Example: Halve score as part of penalty
-    setGameMessage(`${playerName}, you try again with caution...`);
-    toast.warning("Retrying with a penalty. You've been sent back one level.");
+    //setGameMessage(`${playerName}, you try again with caution...`);
+  //  toast.warning("Retrying with a penalty. You've been sent back one level.");
     gameCanvasRef.current?.retry();
   }, [playerName]);
 
