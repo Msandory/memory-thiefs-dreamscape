@@ -15,90 +15,71 @@ import timerIcon from '@/assets/sprites/timericon.png';
 import thunderIcon from '@/assets/sprites/thundericon.png';
 import shieldIcon from '@/assets/sprites/sheildicon.png';
 import speedIcon from '@/assets/sprites/speedicon.png';
+import { 
+  TILE_SIZE, 
+  MAP_COLS, 
+  MAP_ROWS, 
+  Difficulty, 
+  MindType, 
+  PowerUpType, 
+  difficultyConfigs, 
+  commonConfig,
+  MINI_CHALLENGES,
+  SpecialOrb,
+  SPECIAL_ORB_TYPES
+} from '@/config/gameConfig';
+import { getMaze } from '@/utils/mazeGenerator';
+import { 
+  MiniChallengeManager, 
+  generateSpecialOrb, 
+  shouldTriggerChallenge,
+  GameChallengeState 
+} from '@/utils/miniChallenges';
 
-// --- Map and Wall Configuration ---
-const TILE_SIZE = 40;
-const MAP_COLS = 20;
-const MAP_ROWS = 15;
-
-const roomLayouts = {
-  easy: [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1],
-    [1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1],
-    [1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  ],
-  medium: [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1],
-    [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1],
-    [1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1],
-    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1],
-    [1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-    [1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
-    [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1],
-    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  ],
-  hard: [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1],
-    [1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-    [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1],
-    [1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
-    [1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
-    [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-    [1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1],
-    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  ]
-};
-
-const difficultyConfigs = {
-  easy: { baseTimer: 45, timerIncrement: 3, baseGuardSpeed: 0.2, speedIncrement: 0.2, initialGuards: 1, guardsPerLevel: 0.5, powerUpChance: 0.8 },
-  medium: { baseTimer: 35, timerIncrement: 2, baseGuardSpeed: 1, speedIncrement: 0.5, initialGuards: 1, guardsPerLevel: 1, powerUpChance: 0.6 },
-  hard: { baseTimer: 30, timerIncrement: 1, baseGuardSpeed: 1.3, speedIncrement: 0.6, initialGuards: 2, guardsPerLevel: 1, powerUpChance: 0.8 },
-};
-
-const commonConfig = {
-  MAX_LEVELS: 10, initialOrbs: 2, orbsPerLevel: 0.5, safeDistance: 100, guardianVisionRange: 100, guardianVisionAngle: Math.PI / 3, powerUpStartLevel: 4,
-};
-
-type PowerUpType = 'speed' | 'immunity' | 'thunder' | 'timer';
 interface PowerUp { x: number; y: number; type: PowerUpType; collected: boolean; pulse: number; }
 interface ActivePowerUp { type: PowerUpType; duration: number; maxDuration: number; }
-interface GameCanvasProps { isActive: boolean; onGameStateChange: (state: 'playing' | 'paused' | 'gameOver' | 'victory') => void; memoriesCollected: number; onMemoryCollected: () => void; playerName: string; onPlayerNameLoaded: (name: string) => void; muted: boolean; onTimerUpdate?: (time: number) => void; onTimerActive?: (isActive: boolean) => void; onLevelChange?: (level: number) => void; mobileDirection?: { up: boolean; down: boolean; left: boolean; right: boolean }; difficulty: 'easy' | 'medium' | 'hard'; }
+interface GameCanvasProps { 
+  isActive: boolean; 
+  onGameStateChange: (state: 'playing' | 'paused' | 'gameOver' | 'victory') => void; 
+  memoriesCollected: number; 
+  onMemoryCollected: () => void; 
+  playerName: string; 
+  onPlayerNameLoaded: (name: string) => void; 
+  muted: boolean; 
+  onTimerUpdate?: (time: number) => void; 
+  onTimerActive?: (isActive: boolean) => void; 
+  onLevelChange?: (level: number) => void; 
+  mobileDirection?: { up: boolean; down: boolean; left: boolean; right: boolean }; 
+  difficulty: Difficulty;
+  mind: MindType;
+  mazeId: string;
+  onScoreUpdate?: (score: number) => void;
+}
 interface Guardian { x: number; y: number; directionX: number; directionY: number; alert: boolean; }
-interface SavedGameState { player: { x: number; y: number; size: number }; memoryOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[]; guardians: Guardian[]; memoriesCollected: number; playerName: string; currentLevel: number; timeRemaining: number; powerUps: PowerUp[]; activePowerUps: ActivePowerUp[]; totalTimePlayed: number; }
+interface SavedGameState { 
+  player: { x: number; y: number; size: number }; 
+  memoryOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[]; 
+  guardians: Guardian[]; 
+  memoriesCollected: number; 
+  playerName: string; 
+  currentLevel: number; 
+  timeRemaining: number; 
+  powerUps: PowerUp[]; 
+  activePowerUps: ActivePowerUp[]; 
+  totalTimePlayed: number;
+  specialOrb: SpecialOrb | null;
+  score: number;
+}
 interface ConfettiParticle { x: number; y: number; vx: number; vy: number; color: string; size: number; opacity: number; }
 
-async function saveScore(playerName: string, time: number, difficulty: 'easy' | 'medium' | 'hard') {
+async function saveScore(playerName: string, time: number, difficulty: Difficulty, score: number, mind: MindType) {
   try {
     const docRef = await addDoc(collection(db, "scores"), {
       playerName,
       time,
       difficulty,
+      score,
+      mind,
       date: new Date().toISOString()
     });
     console.log(`Score saved with ID: ${docRef.id}`);
@@ -112,7 +93,7 @@ async function saveScore(playerName: string, time: number, difficulty: 'easy' | 
 }
 
 export const GameCanvas = forwardRef<any, GameCanvasProps>(({
-  isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty,
+  isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
@@ -120,6 +101,7 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [score, setScore] = useState(0);
   const soundsRef = useRef<{ orbCollect: Howl; guardianAlert: Howl; gameOver: Howl; victory: Howl; background: Howl; } | null>(null);
   const firstRender = useRef(true);
   const timerStarted = useRef(false);
@@ -134,8 +116,28 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
   const isCelebrating = useRef(false);
   const confettiParticles = useRef<ConfettiParticle[]>([]);
   const totalTimePlayed = useRef(0);
+  const specialOrb = useRef<SpecialOrb | null>(null);
+  const challengeManager = useRef<MiniChallengeManager>(new MiniChallengeManager(MINI_CHALLENGES));
+  const orbsCollectedWithoutAlert = useRef(0);
+  const levelStartTime = useRef(0);
+  const currentMazeLayout = useRef<number[][]>([]);
 
-  const getCurrentRoomLayout = () => roomLayouts[difficulty];
+  const getCurrentRoomLayout = () => {
+    // Check if we already have the layout for this mazeId
+    if (currentMazeLayout.current && currentMazeLayout.current.length > 0) {
+      return currentMazeLayout.current;
+    }
+    
+    const maze = getMaze(mazeId);
+    if (maze && maze.layout) {
+      currentMazeLayout.current = maze.layout;
+      return maze.layout;
+    }
+    // Fallback to empty room if maze not found
+    const fallbackLayout = Array(MAP_ROWS).fill(null).map(() => Array(MAP_COLS).fill(0));
+    currentMazeLayout.current = fallbackLayout;
+    return fallbackLayout;
+  };
   const getLevelConfig = (level: number) => { 
     const diffConfig = difficultyConfigs[difficulty]; 
     return { 
@@ -315,7 +317,9 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
       timeRemaining, 
       powerUps: powerUps.current.map(p => ({ ...p })), 
       activePowerUps: activePowerUps.current.map(p => ({ ...p })), 
-      totalTimePlayed: totalTimePlayed.current 
+      totalTimePlayed: totalTimePlayed.current,
+      specialOrb: specialOrb.current,
+      score 
     }; 
     localStorage.setItem('gameState', JSON.stringify(state));
   };
@@ -363,12 +367,13 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
     onGameStateChange('playing'); 
     saveGameState(); 
   };
-  useImperativeHandle(ref, () => ({ 
-    reset: () => resetGameState(1), 
-    retry: () => { 
-      const newLevel = Math.max(1, currentLevel - 1); 
-      resetGameState(newLevel); 
-    } 
+  useImperativeHandle(ref, () => ({
+    reset: () => resetGameState(1),
+    retry: () => {
+      const newLevel = Math.max(1, currentLevel - 1);
+      resetGameState(newLevel);
+    },
+    useThunder: () => useThunder()
   }));
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -569,7 +574,7 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
               scores.push(finalScore);
               localStorage.setItem('gameScores', JSON.stringify(scores));
               // Save to Firebase, including playerName as user identifier
-              saveScore(playerName || "Wanderer", totalTimePlayed.current, difficulty);
+              saveScore(playerName || "Wanderer", totalTimePlayed.current, difficulty, score, mind);
             } catch (error) {
               console.error("Failed to save score to localStorage:", error);
             }

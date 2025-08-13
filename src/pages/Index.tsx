@@ -9,9 +9,9 @@ import { InstructionsScreen } from "@/components/InstructionsScreen";
 import { toast } from "sonner";
 import backgroundMusic from '@/assets/audio/background-music.mp3';
 import React from "react";
+import { Difficulty, MindType } from '@/config/gameConfig';
 
 type GameState = 'menu' | 'instructions' | 'playing' | 'paused' | 'gameOver' | 'victory';
-type Difficulty = 'easy' | 'medium' | 'hard';
 
 interface SavedGameState {
   playerName: string;
@@ -118,6 +118,8 @@ const Index = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [mobileDirection, setMobileDirection] = useState({ up: false, down: false, left: false, right: false });
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
+  const [selectedMind, setSelectedMind] = useState<MindType>('scholar');
+  const [selectedMazeId, setSelectedMazeId] = useState('scholar_medium_1');
 
   const gameCanvasRef = useRef<{ reset: () => void; retry: () => void; useThunder: () => void }>(null);
   const backgroundMusicRef = useRef<Howl | null>(null);
@@ -142,9 +144,11 @@ const Index = () => {
   useEffect(() => { localStorage.setItem('muted', JSON.stringify(muted)); }, [muted]);
   useEffect(() => { localStorage.setItem('playerName', playerName); }, [playerName]);
 
-  const handleStartGame = useCallback((name: string, selectedDifficulty: Difficulty) => {
+  const handleStartGame = useCallback((name: string, selectedDifficulty: Difficulty, mind: MindType, mazeId: string) => {
     setPlayerName(name);
     setDifficulty(selectedDifficulty);
+    setSelectedMind(mind);
+    setSelectedMazeId(mazeId);
     setGameState('playing');
     setMemoriesCollected(0);
     setScore(0);
@@ -227,6 +231,9 @@ const Index = () => {
               onLevelChange={handleLevelChange}
               mobileDirection={mobileDirection}
               difficulty={difficulty}
+              mind={selectedMind}
+              mazeId={selectedMazeId}
+              onScoreUpdate={setScore}
             />
             <GameHUD
               memoriesCollected={memoriesCollected}
@@ -249,7 +256,7 @@ const Index = () => {
               <GameOverScreen 
                 isVictory={gameState === 'victory'} 
                 memoriesCollected={memoriesCollected} 
-                totalMemories={0}
+                totalMemories={2 + (currentLevel - 1)}
                 playerName={playerName} 
                 onRetry={handleRetry}
                 onMainMenu={handleMainMenu} 

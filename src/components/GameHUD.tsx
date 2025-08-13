@@ -59,8 +59,7 @@ export const GameHUD = ({
   return (
     <div className="absolute inset-0 pointer-events-none p-2 sm:p-4">
       {/* Top bar container */}
-      {/* FIX: Use items-center to vertically align and NO-WRAP to prevent moving elements */}
-      <div className="flex justify-between items-center gap-4 pointer-events-auto">
+      <div className="flex justify-between items-center flex-nowrap gap-4 pointer-events-auto">
         
         {/* Left-aligned group */}
         <div className="flex items-center gap-2">
