@@ -171,11 +171,52 @@ function GameScene({
   mazeLayout: number[][]
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
+  const rotationRef = useRef({ x: 0, y: 0 });
+  const mouseRef = useRef({ isLocked: false });
+
+  // Mouse look controls
+  useEffect(() => {
+    const canvas = gl.domElement;
+    
+    const handleClick = () => {
+      canvas.requestPointerLock();
+    };
+
+    const handlePointerLockChange = () => {
+      mouseRef.current.isLocked = document.pointerLockElement === canvas;
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!mouseRef.current.isLocked) return;
+
+      const sensitivity = 0.002;
+      rotationRef.current.y -= event.movementX * sensitivity; // Horizontal rotation
+      rotationRef.current.x -= event.movementY * sensitivity; // Vertical rotation
+
+      // Clamp vertical rotation to prevent over-rotation
+      rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
+    };
+
+    canvas.addEventListener('click', handleClick);
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
+    document.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      canvas.removeEventListener('click', handleClick);
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      document.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [gl]);
 
   useFrame(() => {
     // Update camera position to player position for first person view
     camera.position.set(...playerPosition);
+    
+    // Apply mouse rotation
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = rotationRef.current.y;
+    camera.rotation.x = rotationRef.current.x;
     
     // Room shift effect
     if (groupRef.current && roomShift.intensity > 0) {
