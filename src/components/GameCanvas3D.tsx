@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { Howl } from "howler";
 import { collection, addDoc } from "firebase/firestore";
@@ -56,22 +55,9 @@ function Wall({ position }: { position: [number, number, number] }) {
   );
 }
 
-// Simple 3D Player Component
+// First Person Player Component - no visible mesh since we're inside it
 function Player({ position }: { position: [number, number, number] }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  
-  useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y = state.clock.elapsedTime * 2;
-    }
-  });
-
-  return (
-    <mesh ref={meshRef} position={position}>
-      <sphereGeometry args={[0.5, 16, 16]} />
-      <meshStandardMaterial color="#4ECDC4" emissive="#2C7873" emissiveIntensity={0.3} />
-    </mesh>
-  );
+  return null; // No visual representation in first person
 }
 
 // Simple 3D Memory Orb Component
@@ -105,33 +91,70 @@ function MemoryOrb({
   );
 }
 
-// Simple 3D Guardian Component
+// Enhanced 3D Guardian Component
 function Guardian({ position, alert }: { position: [number, number, number], alert: boolean }) {
-  const meshRef = useRef<THREE.Mesh>(null);
+  const meshRef = useRef<THREE.Group>(null);
+  const eyeLeftRef = useRef<THREE.Mesh>(null);
+  const eyeRightRef = useRef<THREE.Mesh>(null);
   
-  useFrame(() => {
+  useFrame((state) => {
     if (meshRef.current) {
-      meshRef.current.rotation.y += 0.02;
+      meshRef.current.rotation.y += alert ? 0.05 : 0.02;
+    }
+    // Glowing eyes effect
+    if (eyeLeftRef.current && eyeRightRef.current) {
+      const intensity = alert ? 0.8 + Math.sin(state.clock.elapsedTime * 8) * 0.2 : 0.3;
+      (eyeLeftRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = intensity;
+      (eyeRightRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = intensity;
     }
   });
 
   return (
-    <group position={position}>
-      <mesh ref={meshRef}>
-        <boxGeometry args={[0.6, 1.2, 0.6]} />
-        <meshStandardMaterial color={alert ? "#E74C3C" : "#7F8C8D"} />
+    <group ref={meshRef} position={position}>
+      {/* Main body */}
+      <mesh position={[0, 0.6, 0]}>
+        <boxGeometry args={[0.8, 1.2, 0.6]} />
+        <meshStandardMaterial color={alert ? "#E74C3C" : "#34495E"} />
       </mesh>
+      
+      {/* Head */}
+      <mesh position={[0, 1.4, 0]}>
+        <boxGeometry args={[0.6, 0.6, 0.5]} />
+        <meshStandardMaterial color={alert ? "#C0392B" : "#2C3E50"} />
+      </mesh>
+      
+      {/* Eyes */}
+      <mesh ref={eyeLeftRef} position={[-0.15, 1.45, 0.26]}>
+        <sphereGeometry args={[0.08, 8, 8]} />
+        <meshStandardMaterial color="#FF0000" emissive="#FF0000" emissiveIntensity={0.3} />
+      </mesh>
+      <mesh ref={eyeRightRef} position={[0.15, 1.45, 0.26]}>
+        <sphereGeometry args={[0.08, 8, 8]} />
+        <meshStandardMaterial color="#FF0000" emissive="#FF0000" emissiveIntensity={0.3} />
+      </mesh>
+      
+      {/* Arms */}
+      <mesh position={[-0.5, 0.8, 0]}>
+        <boxGeometry args={[0.3, 0.8, 0.3]} />
+        <meshStandardMaterial color={alert ? "#E74C3C" : "#34495E"} />
+      </mesh>
+      <mesh position={[0.5, 0.8, 0]}>
+        <boxGeometry args={[0.3, 0.8, 0.3]} />
+        <meshStandardMaterial color={alert ? "#E74C3C" : "#34495E"} />
+      </mesh>
+      
+      {/* Alert aura */}
       {alert && (
-        <mesh position={[0, 0.5, 0]}>
-          <sphereGeometry args={[1, 8, 8]} />
-          <meshStandardMaterial color="#E74C3C" transparent opacity={0.2} />
+        <mesh position={[0, 0.8, 0]}>
+          <sphereGeometry args={[1.5, 12, 12]} />
+          <meshStandardMaterial color="#E74C3C" transparent opacity={0.1} />
         </mesh>
       )}
     </group>
   );
 }
 
-// Simple 3D Game Scene Component
+// First Person Game Scene Component
 function GameScene({ 
   playerPosition,
   memoryOrbs,
@@ -148,8 +171,13 @@ function GameScene({
   mazeLayout: number[][]
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const { camera } = useThree();
 
   useFrame(() => {
+    // Update camera position to player position for first person view
+    camera.position.set(...playerPosition);
+    
+    // Room shift effect
     if (groupRef.current && roomShift.intensity > 0) {
       groupRef.current.position.x = roomShift.x * roomShift.intensity;
       groupRef.current.position.z = roomShift.y * roomShift.intensity;
@@ -466,7 +494,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-    1,
+    1.6, // Eye level height
     (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
   ];
 
@@ -474,16 +502,14 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     <div className="w-full h-full bg-background">
       <Canvas
         style={{ width: '100%', height: '100%' }}
-        camera={{ position: [0, 10, 10], fov: 75 }}
+        camera={{ 
+          position: playerPosition, 
+          fov: 75,
+          near: 0.1,
+          far: 1000
+        }}
       >
-        <OrbitControls 
-          enablePan={false} 
-          enableZoom={true} 
-          enableRotate={true}
-          maxPolarAngle={Math.PI / 2.2}
-          minDistance={5}
-          maxDistance={20}
-        />
+        {/* First person view - no orbit controls */}
         <GameScene 
           playerPosition={playerPosition}
           memoryOrbs={memoryOrbs}
