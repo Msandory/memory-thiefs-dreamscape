@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Howl } from "howler";
 import { MainMenu } from "@/components/MainMenu";
-import { GameCanvas } from "@/components/GameCanvas";
+import { GameCanvas3D } from "@/components/GameCanvas3D";
 import { GameHUD } from "@/components/GameHUD";
 import { PauseMenu } from "@/components/PauseMenu";
 import { GameOverScreen } from "@/components/GameOverScreen";
@@ -217,7 +217,7 @@ const Index = () => {
       {(gameState === 'playing' || gameState === 'paused' || gameState === 'gameOver' || gameState === 'victory') && (
         <div className="w-full h-full flex items-center justify-center p-1 sm:p-4">
           <div className="relative aspect-[4/3] w-full max-w-5xl max-h-full">
-            <GameCanvas
+            <GameCanvas3D
               ref={gameCanvasRef}
               isActive={gameState === 'playing'}
               onGameStateChange={handleGameStateChange}
