@@ -1,4 +1,6 @@
 // Game Configuration
+import { ChallengeState } from '../utils/miniChallenges';
+
 export const TILE_SIZE = 40;
 export const MAP_COLS = 20;
 export const MAP_ROWS = 15;
@@ -20,7 +22,7 @@ export interface MiniChallenge {
   description: string;
   type: 'stealth' | 'speed' | 'collection';
   points: number;
-  condition: (gameState: any) => boolean;
+  condition: (gameState: ChallengeState) => boolean;
   duration: number; // seconds
 }
 

@@ -256,7 +256,7 @@ const Index = () => {
               <GameOverScreen 
                 isVictory={gameState === 'victory'} 
                 memoriesCollected={memoriesCollected} 
-                totalMemories={0}
+                totalMemories={2 + (currentLevel - 1)}
                 playerName={playerName} 
                 onRetry={handleRetry}
                 onMainMenu={handleMainMenu} 

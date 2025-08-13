@@ -123,13 +123,20 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
   const currentMazeLayout = useRef<number[][]>([]);
 
   const getCurrentRoomLayout = () => {
+    // Check if we already have the layout for this mazeId
+    if (currentMazeLayout.current && currentMazeLayout.current.length > 0) {
+      return currentMazeLayout.current;
+    }
+    
     const maze = getMaze(mazeId);
     if (maze && maze.layout) {
       currentMazeLayout.current = maze.layout;
       return maze.layout;
     }
     // Fallback to empty room if maze not found
-    return Array(MAP_ROWS).fill(null).map(() => Array(MAP_COLS).fill(0));
+    const fallbackLayout = Array(MAP_ROWS).fill(null).map(() => Array(MAP_COLS).fill(0));
+    currentMazeLayout.current = fallbackLayout;
+    return fallbackLayout;
   };
   const getLevelConfig = (level: number) => { 
     const diffConfig = difficultyConfigs[difficulty]; 
@@ -360,12 +367,13 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
     onGameStateChange('playing'); 
     saveGameState(); 
   };
-  useImperativeHandle(ref, () => ({ 
-    reset: () => resetGameState(1), 
-    retry: () => { 
-      const newLevel = Math.max(1, currentLevel - 1); 
-      resetGameState(newLevel); 
-    } 
+  useImperativeHandle(ref, () => ({
+    reset: () => resetGameState(1),
+    retry: () => {
+      const newLevel = Math.max(1, currentLevel - 1);
+      resetGameState(newLevel);
+    },
+    useThunder: () => useThunder()
   }));
   useEffect(() => {
     if (!canvasRef.current) return;

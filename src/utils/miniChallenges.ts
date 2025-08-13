@@ -3,7 +3,7 @@ import { MiniChallenge, SpecialOrb, SPECIAL_ORB_TYPES } from '../config/gameConf
 export interface ChallengeState {
   activeChallenge: MiniChallenge | null;
   challengeStartTime: number;
-  challengeProgress: any;
+  challengeProgress: Record<string, any>;
   challengeCompleted: boolean;
   orbsCollectedWithoutAlert: number;
   timeElapsed: number;
