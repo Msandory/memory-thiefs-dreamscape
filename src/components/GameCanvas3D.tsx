@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Box, Sphere, Plane, OrbitControls, PerspectiveCamera } from "@react-three/drei";
+import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { Howl } from "howler";
 import { collection, addDoc } from "firebase/firestore";
@@ -46,23 +46,18 @@ interface GameCanvasProps {
 }
 interface Guardian { x: number; y: number; directionX: number; directionY: number; alert: boolean; }
 
-// 3D Wall Component
+// Simple 3D Wall Component
 function Wall({ position }: { position: [number, number, number] }) {
   return (
-    <Box position={position} args={[2, 2, 2]}>
-      <meshStandardMaterial color="hsl(220, 30%, 20%)" />
-    </Box>
+    <mesh position={position}>
+      <boxGeometry args={[2, 2, 2]} />
+      <meshStandardMaterial color="#444444" />
+    </mesh>
   );
 }
 
-// 3D Player Component
-function Player({ 
-  position, 
-  immunity = false 
-}: { 
-  position: [number, number, number], 
-  immunity?: boolean 
-}) {
+// Simple 3D Player Component
+function Player({ position }: { position: [number, number, number] }) {
   const meshRef = useRef<THREE.Mesh>(null);
   
   useFrame((state) => {
@@ -72,28 +67,14 @@ function Player({
   });
 
   return (
-    <group position={position}>
-      <Sphere ref={meshRef} args={[0.5, 16, 16]}>
-        <meshStandardMaterial 
-          color={immunity ? "hsl(120, 100%, 60%)" : "hsl(200, 100%, 70%)"} 
-          emissive={immunity ? "hsl(120, 100%, 30%)" : "hsl(200, 100%, 30%)"}
-          emissiveIntensity={0.3}
-        />
-      </Sphere>
-      {immunity && (
-        <Sphere args={[0.7, 16, 16]}>
-          <meshStandardMaterial 
-            color="hsl(120, 100%, 60%)" 
-            transparent 
-            opacity={0.3}
-          />
-        </Sphere>
-      )}
-    </group>
+    <mesh ref={meshRef} position={position}>
+      <sphereGeometry args={[0.5, 16, 16]} />
+      <meshStandardMaterial color="#4ECDC4" emissive="#2C7873" emissiveIntensity={0.3} />
+    </mesh>
   );
 }
 
-// 3D Memory Orb Component
+// Simple 3D Memory Orb Component
 function MemoryOrb({ 
   position, 
   collected, 
@@ -117,29 +98,15 @@ function MemoryOrb({
   if (collected) return null;
 
   return (
-    <Sphere 
-      ref={meshRef}
-      position={position} 
-      args={[0.3, 12, 12]} 
-      onClick={onClick}
-    >
-      <meshStandardMaterial 
-        color="hsl(280, 100%, 70%)"
-        emissive="hsl(280, 100%, 70%)"
-        emissiveIntensity={0.5}
-      />
-    </Sphere>
+    <mesh ref={meshRef} position={position} onClick={onClick}>
+      <sphereGeometry args={[0.3, 12, 12]} />
+      <meshStandardMaterial color="#9B59B6" emissive="#8E44AD" emissiveIntensity={0.5} />
+    </mesh>
   );
 }
 
-// 3D Guardian Component
-function Guardian({ 
-  position, 
-  alert 
-}: { 
-  position: [number, number, number], 
-  alert: boolean 
-}) {
+// Simple 3D Guardian Component
+function Guardian({ position, alert }: { position: [number, number, number], alert: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null);
   
   useFrame(() => {
@@ -150,43 +117,35 @@ function Guardian({
 
   return (
     <group position={position}>
-      <Box ref={meshRef} args={[0.6, 1.2, 0.6]}>
-        <meshStandardMaterial 
-          color={alert ? "hsl(0, 100%, 60%)" : "hsl(0, 0%, 30%)"} 
-          emissive={alert ? "hsl(0, 100%, 30%)" : undefined}
-          emissiveIntensity={alert ? 0.3 : 0}
-        />
-      </Box>
+      <mesh ref={meshRef}>
+        <boxGeometry args={[0.6, 1.2, 0.6]} />
+        <meshStandardMaterial color={alert ? "#E74C3C" : "#7F8C8D"} />
+      </mesh>
       {alert && (
-        <Sphere args={[1, 8, 8]} position={[0, 0.5, 0]}>
-          <meshStandardMaterial 
-            color="hsl(0, 100%, 50%)" 
-            transparent 
-            opacity={0.2}
-          />
-        </Sphere>
+        <mesh position={[0, 0.5, 0]}>
+          <sphereGeometry args={[1, 8, 8]} />
+          <meshStandardMaterial color="#E74C3C" transparent opacity={0.2} />
+        </mesh>
       )}
     </group>
   );
 }
 
-// 3D Game Scene Component
+// Simple 3D Game Scene Component
 function GameScene({ 
   playerPosition,
   memoryOrbs,
   guardians,
   onOrbClick,
   roomShift,
-  mazeLayout,
-  hasImmunity
+  mazeLayout
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
   guardians: Array<{ x: number; y: number; alert: boolean }>,
   onOrbClick: (index: number) => void,
   roomShift: { x: number, y: number, intensity: number },
-  mazeLayout: number[][],
-  hasImmunity: boolean
+  mazeLayout: number[][]
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -217,18 +176,16 @@ function GameScene({
   return (
     <group ref={groupRef}>
       {/* Floor */}
-      <Plane args={[MAP_COLS * 2, MAP_ROWS * 2]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-        <meshStandardMaterial color="hsl(240, 20%, 10%)" />
-      </Plane>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+        <planeGeometry args={[MAP_COLS * 2, MAP_ROWS * 2]} />
+        <meshStandardMaterial color="#2C3E50" />
+      </mesh>
 
       {/* Walls */}
       {walls}
 
       {/* Player */}
-      <Player 
-        position={playerPosition}
-        immunity={hasImmunity}
-      />
+      <Player position={playerPosition} />
 
       {/* Memory Orbs */}
       {memoryOrbs.map((orb, index) => (
@@ -260,12 +217,8 @@ function GameScene({
 
       {/* Lighting */}
       <ambientLight intensity={0.4} />
-      <directionalLight 
-        position={[10, 10, 5]} 
-        intensity={1} 
-        castShadow 
-      />
-      <pointLight position={[0, 5, 0]} intensity={0.5} color="hsl(280, 100%, 70%)" />
+      <directionalLight position={[10, 10, 5]} intensity={1} />
+      <pointLight position={[0, 5, 0]} intensity={0.5} color="#9B59B6" />
     </group>
   );
 }
@@ -517,16 +470,12 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
   ];
 
-  const hasImmunity = activePowerUps.some(p => p.type === 'immunity');
-
   return (
     <div className="w-full h-full bg-background">
       <Canvas
         style={{ width: '100%', height: '100%' }}
         camera={{ position: [0, 10, 10], fov: 75 }}
-        shadows
       >
-        <PerspectiveCamera makeDefault position={[0, 10, 10]} />
         <OrbitControls 
           enablePan={false} 
           enableZoom={true} 
@@ -542,7 +491,6 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           onOrbClick={handleOrbClick}
           roomShift={roomShift}
           mazeLayout={getCurrentRoomLayout()}
-          hasImmunity={hasImmunity}
         />
       </Canvas>
     </div>
