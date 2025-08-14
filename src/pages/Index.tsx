@@ -120,6 +120,10 @@ const Index = () => {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [selectedMind, setSelectedMind] = useState<MindType>('scholar');
   const [selectedMazeId, setSelectedMazeId] = useState('scholar_medium_1');
+  const [gameSettings, setGameSettings] = useState({
+    mouseSensitivity: 1.0,
+    mouseInvert: false
+  });
 
   const gameCanvasRef = useRef<{ reset: () => void; retry: () => void; useThunder: () => void }>(null);
   const backgroundMusicRef = useRef<Howl | null>(null);
@@ -234,6 +238,8 @@ const Index = () => {
               mind={selectedMind}
               mazeId={selectedMazeId}
               onScoreUpdate={setScore}
+              gameSettings={gameSettings}
+              onSettingsChange={setGameSettings}
             />
             <GameHUD
               memoriesCollected={memoriesCollected}
@@ -250,7 +256,14 @@ const Index = () => {
               totalMemories={2 + (currentLevel - 1)}
             />
             {gameState === 'paused' && (
-              <PauseMenu onResume={() => setGameState('playing')} onRestart={handleRestart} onMainMenu={handleMainMenu} muted={muted} />
+              <PauseMenu 
+                onResume={() => setGameState('playing')} 
+                onRestart={handleRestart} 
+                onMainMenu={handleMainMenu} 
+                muted={muted} 
+                gameSettings={gameSettings}
+                onSettingsChange={setGameSettings}
+              />
             )}
             {(gameState === 'gameOver' || gameState === 'victory') && (
               <GameOverScreen 
