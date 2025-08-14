@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
+import { useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { Howl } from "howler";
 import { collection, addDoc } from "firebase/firestore";
@@ -9,6 +10,7 @@ import guardianAlert from '@/assets/audio/guardian-alert.mp3';
 import gameOver from '@/assets/audio/game-over.mp3';
 import victory from '@/assets/audio/victory.mp3';
 import backgroundMusic from '@/assets/audio/background-music.mp3';
+import brickWallTexture from '@/assets/sprites/brickWallTexture.avif';
 import { 
   TILE_SIZE, 
   MAP_COLS, 
@@ -45,19 +47,59 @@ interface GameCanvasProps {
 }
 interface Guardian { x: number; y: number; directionX: number; directionY: number; alert: boolean; }
 
-// Simple 3D Wall Component
+// Enhanced 3D Wall Component with texture
 function Wall({ position }: { position: [number, number, number] }) {
+  const texture = useTexture(brickWallTexture);
+  
+  useEffect(() => {
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 2); // Repeat texture for better appearance
+  }, [texture]);
+
   return (
     <mesh position={position}>
-      <boxGeometry args={[2, 2, 2]} />
-      <meshStandardMaterial color="#444444" />
+      <boxGeometry args={[2, 4, 2]} />
+      <meshStandardMaterial map={texture} />
     </mesh>
   );
 }
 
-// First Person Player Component - no visible mesh since we're inside it
-function Player({ position }: { position: [number, number, number] }) {
-  return null; // No visual representation in first person
+// 3D Player Model Component
+function Player({ 
+  position, 
+  isMoving, 
+  isRunningFast 
+}: { 
+  position: [number, number, number],
+  isMoving: boolean,
+  isRunningFast: boolean
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  
+  // For now, use a simple 3D representation until GLB model is available
+  useFrame((state) => {
+    if (groupRef.current && isMoving) {
+      // Simple bob animation when moving
+      groupRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 8) * 0.1;
+    } else if (groupRef.current) {
+      groupRef.current.position.y = position[1];
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={position}>
+      {/* Player body - visible in third person if needed */}
+      <mesh position={[0, 0.8, 0]}>
+        <capsuleGeometry args={[0.3, 1.6]} />
+        <meshStandardMaterial color="#2E86AB" />
+      </mesh>
+      {/* Player head */}
+      <mesh position={[0, 1.7, 0]}>
+        <sphereGeometry args={[0.25]} />
+        <meshStandardMaterial color="#F4A261" />
+      </mesh>
+    </group>
+  );
 }
 
 // Simple 3D Memory Orb Component
@@ -161,14 +203,16 @@ function GameScene({
   guardians,
   onOrbClick,
   roomShift,
-  mazeLayout
+  mazeLayout,
+  playerMovement
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
   guardians: Array<{ x: number; y: number; alert: boolean }>,
   onOrbClick: (index: number) => void,
   roomShift: { x: number, y: number, intensity: number },
-  mazeLayout: number[][]
+  mazeLayout: number[][],
+  playerMovement: { isMoving: boolean, isRunningFast: boolean }
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
@@ -235,7 +279,7 @@ function GameScene({
         walls.push(
           <Wall 
             key={`wall-${row}-${col}`}
-            position={[x, 1, z]} 
+            position={[x, 2, z]} 
           />
         );
       }
@@ -253,8 +297,12 @@ function GameScene({
       {/* Walls */}
       {walls}
 
-      {/* Player */}
-      <Player position={playerPosition} />
+      {/* Player - hidden in first person, but keep for potential third person mode */}
+      <Player 
+        position={playerPosition} 
+        isMoving={playerMovement?.isMoving || false}
+        isRunningFast={playerMovement?.isRunningFast || false}
+      />
 
       {/* Memory Orbs */}
       {memoryOrbs.map((orb, index) => (
@@ -317,6 +365,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   const [score, setScore] = useState(0);
   const [roomShift, setRoomShift] = useState({ x: 0, y: 0, intensity: 0 });
   const [player, setPlayer] = useState({ x: 100, y: 100, size: 20 });
+  const [playerMovement, setPlayerMovement] = useState({ isMoving: false, isRunningFast: false });
+  const keysPressed = useRef({ w: false, a: false, s: false, d: false });
   const [memoryOrbs, setMemoryOrbs] = useState<{ x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[]>([]);
   const [guardians, setGuardians] = useState<Guardian[]>([]);
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
@@ -473,58 +523,89 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     useThunder: () => {}
   }));
 
-  // Keyboard controls for 3D movement
+  // Enhanced keyboard controls for 3D movement with proper state management
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const speed = 5;
-      const currentMap = getCurrentRoomLayout();
-      
-      setPlayer(prevPlayer => {
-        let newX = prevPlayer.x;
-        let newY = prevPlayer.y;
-
-        switch (e.key.toLowerCase()) {
-          case 'w':
-          case 'arrowup':
-            newY = prevPlayer.y - speed;
-            break;
-          case 's':
-          case 'arrowdown':
-            newY = prevPlayer.y + speed;
-            break;
-          case 'a':
-          case 'arrowleft':
-            newX = prevPlayer.x - speed;
-            break;
-          case 'd':
-          case 'arrowright':
-            newX = prevPlayer.x + speed;
-            break;
-          case 'escape':
-            onGameStateChange('paused');
-            return prevPlayer;
-          default:
-            return prevPlayer;
+      const key = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        const moveKey = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'a' : key === 'arrowright' ? 'd' : key;
+        if (moveKey === 'w' || moveKey === 'a' || moveKey === 's' || moveKey === 'd') {
+          keysPressed.current[moveKey] = true;
         }
+      }
+      if (key === 'escape') {
+        onGameStateChange('paused');
+      }
+    };
 
-        // Check collision
-        const newCol = Math.floor(newX / TILE_SIZE);
-        const newRow = Math.floor(newY / TILE_SIZE);
-        
-        if (newRow >= 0 && newRow < MAP_ROWS && newCol >= 0 && newCol < MAP_COLS &&
-            currentMap[newRow] && currentMap[newRow][newCol] === 0) {
-          return { ...prevPlayer, x: newX, y: newY };
-        }
-        
-        return prevPlayer;
-      });
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      const moveKey = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'a' : key === 'arrowright' ? 'd' : key;
+      if (moveKey === 'w' || moveKey === 'a' || moveKey === 's' || moveKey === 'd') {
+        keysPressed.current[moveKey] = false;
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isActive, gameState, onGameStateChange, getCurrentRoomLayout]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isActive, gameState, onGameStateChange]);
+
+  // Movement loop with smooth movement and animation states
+  useEffect(() => {
+    if (!isActive || gameState !== 'playing') return;
+
+    const moveInterval = setInterval(() => {
+      const currentMap = getCurrentRoomLayout();
+      const keys = keysPressed.current;
+      const isMovingNow = keys.w || keys.a || keys.s || keys.d;
+      
+      // Check if player is near guardians for fast run mode
+      const nearGuardian = guardians.some(guardian => {
+        const dx = player.x - guardian.x;
+        const dy = player.y - guardian.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < 100 && guardian.alert;
+      });
+
+      const speed = nearGuardian ? 8 : 4; // Faster when running from guardians
+      
+      setPlayerMovement({
+        isMoving: isMovingNow,
+        isRunningFast: nearGuardian && isMovingNow
+      });
+
+      if (isMovingNow) {
+        setPlayer(prevPlayer => {
+          let newX = prevPlayer.x;
+          let newY = prevPlayer.y;
+
+          if (keys.w) newY -= speed;
+          if (keys.s) newY += speed;
+          if (keys.a) newX -= speed;
+          if (keys.d) newX += speed;
+
+          // Check collision
+          const newCol = Math.floor(newX / TILE_SIZE);
+          const newRow = Math.floor(newY / TILE_SIZE);
+          
+          if (newRow >= 0 && newRow < MAP_ROWS && newCol >= 0 && newCol < MAP_COLS &&
+              currentMap[newRow] && currentMap[newRow][newCol] === 0) {
+            return { ...prevPlayer, x: newX, y: newY };
+          }
+          
+          return prevPlayer;
+        });
+      }
+    }, 16); // ~60fps
+
+    return () => clearInterval(moveInterval);
+  }, [isActive, gameState, getCurrentRoomLayout, guardians, player]);
 
   // Initialize game on mount
   useEffect(() => {
@@ -558,6 +639,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           onOrbClick={handleOrbClick}
           roomShift={roomShift}
           mazeLayout={getCurrentRoomLayout()}
+          playerMovement={playerMovement}
         />
       </Canvas>
     </div>
