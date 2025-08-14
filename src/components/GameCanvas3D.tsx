@@ -204,7 +204,8 @@ function GameScene({
   onOrbClick,
   roomShift,
   mazeLayout,
-  playerMovement
+  playerMovement,
+  gameState
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
@@ -212,14 +213,15 @@ function GameScene({
   onOrbClick: (index: number) => void,
   roomShift: { x: number, y: number, intensity: number },
   mazeLayout: number[][],
-  playerMovement: { isMoving: boolean, isRunningFast: boolean }
+  playerMovement: { isMoving: boolean, isRunningFast: boolean },
+  gameState: 'idle' | 'playing'
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
   const rotationRef = useRef({ x: 0, y: 0 });
   const mouseRef = useRef({ isLocked: false });
 
-  // Mouse look controls
+  // Mouse look controls with auto-eject on game state changes
   useEffect(() => {
     const canvas = gl.domElement;
     
@@ -252,6 +254,14 @@ function GameScene({
       document.removeEventListener('mousemove', handleMouseMove);
     };
   }, [gl]);
+
+  // Auto-eject mouse on game state changes
+  useEffect(() => {
+    if (gameState !== 'playing') {
+      document.exitPointerLock();
+      mouseRef.current.isLocked = false;
+    }
+  }, [gameState]);
 
   useFrame(() => {
     // Update camera position to player position for first person view
@@ -291,7 +301,7 @@ function GameScene({
       {/* Floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
         <planeGeometry args={[MAP_COLS * 2, MAP_ROWS * 2]} />
-        <meshStandardMaterial color="#2C3E50" />
+        <meshStandardMaterial color="#1a1a1a" />
       </mesh>
 
       {/* Walls */}
@@ -325,7 +335,7 @@ function GameScene({
           key={`guardian-${index}`}
           position={[
             (guardian.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-            1,
+            0, // On the floor
             (guardian.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
           ]}
           alert={guardian.alert}
@@ -523,7 +533,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     useThunder: () => {}
   }));
 
-  // Enhanced keyboard controls for 3D movement with proper state management
+  // Enhanced keyboard controls for 3D movement with proper collision detection
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
 
@@ -536,6 +546,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         }
       }
       if (key === 'escape') {
+        document.exitPointerLock();
         onGameStateChange('paused');
       }
     };
@@ -556,7 +567,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     };
   }, [isActive, gameState, onGameStateChange]);
 
-  // Movement loop with smooth movement and animation states
+  // Movement loop with proper collision detection
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
 
@@ -573,7 +584,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         return distance < 100 && guardian.alert;
       });
 
-      const speed = nearGuardian ? 8 : 4; // Faster when running from guardians
+      const speed = nearGuardian ? 8 : 4;
       
       setPlayerMovement({
         isMoving: isMovingNow,
@@ -584,28 +595,122 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         setPlayer(prevPlayer => {
           let newX = prevPlayer.x;
           let newY = prevPlayer.y;
+          const playerRadius = 15; // Player collision radius
 
+          // Calculate potential new position
           if (keys.w) newY -= speed;
           if (keys.s) newY += speed;
           if (keys.a) newX -= speed;
           if (keys.d) newX += speed;
 
-          // Check collision
-          const newCol = Math.floor(newX / TILE_SIZE);
-          const newRow = Math.floor(newY / TILE_SIZE);
-          
-          if (newRow >= 0 && newRow < MAP_ROWS && newCol >= 0 && newCol < MAP_COLS &&
-              currentMap[newRow] && currentMap[newRow][newCol] === 0) {
+          // Check collision with walls using player radius
+          const checkCollision = (x: number, y: number) => {
+            const col = Math.floor(x / TILE_SIZE);
+            const row = Math.floor(y / TILE_SIZE);
+            
+            // Check bounds
+            if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return true;
+            
+            // Check if tile is a wall
+            return currentMap[row] && currentMap[row][col] === 1;
+          };
+
+          // Check collision at player's corners
+          const corners = [
+            [newX - playerRadius, newY - playerRadius], // Top-left
+            [newX + playerRadius, newY - playerRadius], // Top-right
+            [newX - playerRadius, newY + playerRadius], // Bottom-left
+            [newX + playerRadius, newY + playerRadius]  // Bottom-right
+          ];
+
+          // Only move if no collision detected
+          if (!corners.some(([x, y]) => checkCollision(x, y))) {
             return { ...prevPlayer, x: newX, y: newY };
           }
           
           return prevPlayer;
         });
       }
-    }, 16); // ~60fps
+    }, 16);
 
     return () => clearInterval(moveInterval);
   }, [isActive, gameState, getCurrentRoomLayout, guardians, player]);
+
+  // Guardian movement with improved collision detection
+  useEffect(() => {
+    if (!isActive || gameState !== 'playing') return;
+
+    const guardianInterval = setInterval(() => {
+      const currentMap = getCurrentRoomLayout();
+      const config = getLevelConfig(currentLevel);
+      
+      setGuardians(prevGuardians => {
+        return prevGuardians.map(guardian => {
+          const dx = player.x - guardian.x;
+          const dy = player.y - guardian.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Check if player is detected
+          const isAlert = distance < 120;
+          
+          let newX = guardian.x;
+          let newY = guardian.y;
+          const guardianRadius = 15;
+          
+          if (isAlert) {
+            // Chase player
+            const angle = Math.atan2(dy, dx);
+            newX += Math.cos(angle) * config.guardSpeed;
+            newY += Math.sin(angle) * config.guardSpeed;
+          } else {
+            // Random patrol movement
+            newX += guardian.directionX * config.guardSpeed * 0.5;
+            newY += guardian.directionY * config.guardSpeed * 0.5;
+          }
+          
+          // Wall collision detection for guardians
+          const checkGuardianCollision = (x: number, y: number) => {
+            const col = Math.floor(x / TILE_SIZE);
+            const row = Math.floor(y / TILE_SIZE);
+            
+            if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return true;
+            return currentMap[row] && currentMap[row][col] === 1;
+          };
+
+          const corners = [
+            [newX - guardianRadius, newY - guardianRadius],
+            [newX + guardianRadius, newY - guardianRadius],
+            [newX - guardianRadius, newY + guardianRadius],
+            [newX + guardianRadius, newY + guardianRadius]
+          ];
+
+          // If collision detected, change direction or stay in place
+          if (corners.some(([x, y]) => checkGuardianCollision(x, y))) {
+            if (!isAlert) {
+              // Change direction on wall hit during patrol
+              return {
+                ...guardian,
+                directionX: Math.random() > 0.5 ? 1 : -1,
+                directionY: Math.random() > 0.5 ? 1 : -1,
+                alert: isAlert
+              };
+            }
+            // If chasing and hit wall, don't move but stay alert
+            return { ...guardian, alert: isAlert };
+          }
+          
+          return {
+            ...guardian,
+            x: newX,
+            y: newY,
+            alert: isAlert
+          };
+        });
+      });
+    }, 100);
+
+    return () => clearInterval(guardianInterval);
+  }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig]);
 
   // Initialize game on mount
   useEffect(() => {
@@ -616,7 +721,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-    1.6, // Eye level height
+    1.6, // Eye level height - on the floor
     (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
   ];
 
@@ -640,6 +745,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           roomShift={roomShift}
           mazeLayout={getCurrentRoomLayout()}
           playerMovement={playerMovement}
+          gameState={gameState}
         />
       </Canvas>
     </div>
