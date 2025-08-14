@@ -1,7 +1,7 @@
 // Game Configuration
 import { ChallengeState } from '../utils/miniChallenges';
 
-export const TILE_SIZE = 40;
+export const TILE_SIZE = 100;
 export const MAP_COLS = 20;
 export const MAP_ROWS = 15;
 
@@ -51,29 +51,32 @@ export const difficultyConfigs = {
   easy: { 
     baseTimer: 45, 
     timerIncrement: 3, 
-    baseGuardSpeed: 0.2, 
+    baseGuardSpeed: 10, 
     speedIncrement: 0.2, 
     initialGuards: 1, 
     guardsPerLevel: 0.5, 
-    powerUpChance: 0.8 
+    powerUpChance: 0.8,
+    maxLevels: 5 // Example: Limit levels
   },
   medium: { 
     baseTimer: 35, 
     timerIncrement: 2, 
-    baseGuardSpeed: 1, 
+    baseGuardSpeed: 10, 
     speedIncrement: 0.5, 
     initialGuards: 1, 
     guardsPerLevel: 1, 
-    powerUpChance: 0.6 
+    powerUpChance: 0.6,
+    maxLevels: 10 // Example: Limit levels
   },
   hard: { 
     baseTimer: 30, 
     timerIncrement: 1, 
-    baseGuardSpeed: 1.3, 
+    baseGuardSpeed: 13, 
     speedIncrement: 0.6, 
     initialGuards: 2, 
     guardsPerLevel: 1, 
-    powerUpChance: 0.8 
+    powerUpChance: 0.8,
+    maxLevels: 15 // Example: Limit levels
   },
 };
 
@@ -85,6 +88,11 @@ export const commonConfig = {
   guardianVisionRange: 100,
   guardianVisionAngle: Math.PI / 3,
   powerUpStartLevel: 4,
+  orbRadius: 30,
+  guardianRadius: 40,
+  playerRadius: 20, 
+  guardianAlertRadius: 300, 
+  guardianAlertSpeedMultiplier: 2.5, 
 };
 
 export const MINI_CHALLENGES: MiniChallenge[] = [
