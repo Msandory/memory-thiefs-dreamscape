@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from "react";
 import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
-import { useGLTF, useTexture } from "@react-three/drei";
+import { useGLTF, useTexture,useAnimations } from "@react-three/drei";
 import * as THREE from "three";
 import { Howl } from "howler";
 import { collection, addDoc } from "firebase/firestore";
@@ -25,7 +25,7 @@ import {
   SPECIAL_ORB_TYPES
 } from '@/config/gameConfig';
 import { getMaze } from '@/utils/mazeGenerator';
-
+import { GLTF } from 'three-stdlib'; 
 interface PowerUp { x: number; y: number; type: PowerUpType; collected: boolean; pulse: number; }
 interface ActivePowerUp { type: PowerUpType; duration: number; maxDuration: number; }
 interface GameSettings { mouseSensitivity: number; mouseInvert: boolean; }
@@ -48,15 +48,14 @@ interface GameCanvasProps {
   gameSettings: GameSettings;
   onSettingsChange: (settings: GameSettings) => void;
 }
-interface Guardian { x: number; y: number; directionX: number; directionY: number; alert: boolean; }
-
+interface Guardian { x: number; y: number; directionX: number; directionY: number; alert: boolean; rotationY: number; } // Added rotationY
 // Enhanced 3D Wall Component with texture
 function Wall({ position }: { position: [number, number, number] }) {
   const texture = useTexture(brickWallTexture);
   
   useEffect(() => {
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(1, 2); // Repeat texture for better appearance
+    texture.repeat.set(1, 1); // Repeat texture for better appearance
   }, [texture]);
 
   return (
@@ -135,69 +134,81 @@ function MemoryOrb({
     </mesh>
   );
 }
-
+// Type for GLTF model, adjust based on your GLB structure
+type GuardianGLTFResult = GLTF & {
+  nodes: {
+    // If your GLB has specific named meshes, list them here. Otherwise, you might not need `nodes`.
+  };
+  animations: THREE.AnimationClip[];
+};
+// Enhanced 3D Guardian Component (using GLB model)
+interface GuardianModelProps {
+  position: [number, number, number];
+  alert: boolean;
+  rotationY: number; // Y-axis rotation for facing direction
+ 
+}
 // Enhanced 3D Guardian Component
-function Guardian({ position, alert }: { position: [number, number, number], alert: boolean }) {
-  const meshRef = useRef<THREE.Group>(null);
-  const eyeLeftRef = useRef<THREE.Mesh>(null);
-  const eyeRightRef = useRef<THREE.Mesh>(null);
-  
-  useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += alert ? 0.05 : 0.02;
+function GuardianModel({ position, alert, rotationY }: GuardianModelProps) {
+  // Load the GLB model from the public folder
+  const { scene, animations } = useGLTF('/assets/3DModels/guards.glb') as GuardianGLTFResult;
+  const { actions, mixer } = useAnimations(animations, scene);
+  const currentAction = useRef<THREE.AnimationAction | null>(null);
+
+  // Set up animation logic
+  useEffect(() => {
+    // IMPORTANT: Replace 'Walking' and 'Running' with the actual animation clip names from your GLB.
+    // Use a tool like https://gltf.report/ or https://sandbox.babylonjs.com/ to inspect your GLB.
+    const walkAction = actions['Walking']; 
+    const runAction = actions['Running']; 
+
+    if (walkAction) walkAction.loop = THREE.LoopRepeat;
+    if (runAction) runAction.loop = THREE.LoopRepeat;
+
+    if (alert) {
+      if (currentAction.current !== runAction) {
+        currentAction.current?.fadeOut(0.2);
+        runAction?.reset().fadeIn(0.2).play();
+        currentAction.current = runAction;
+      }
+    } else {
+      if (currentAction.current !== walkAction) {
+        currentAction.current?.fadeOut(0.2);
+        walkAction?.reset().fadeIn(0.2).play();
+        currentAction.current = walkAction;
+      }
     }
-    // Glowing eyes effect
-    if (eyeLeftRef.current && eyeRightRef.current) {
-      const intensity = alert ? 0.8 + Math.sin(state.clock.elapsedTime * 8) * 0.2 : 0.3;
-      (eyeLeftRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = intensity;
-      (eyeRightRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = intensity;
-    }
-  });
+    
+    return () => {
+      // Clean up actions on unmount or state change
+      walkAction?.fadeOut(0.5);
+      runAction?.fadeOut(0.5);
+    };
+  }, [alert, actions]);
+  // Adjust scale and position offsets based on your model's size and origin
+  // If walls are 2 units high, player eye is 1.6, a guardian might be 1.5 units high.
+  // Assuming model's pivot is at its base (y=0)
+  const modelHeight = 1.5; // Desired height of the guardian in 3D units
+  const modelScale = modelHeight; // If original model is 1 unit tall
+  const modelOffset = 0; // If model's feet are at Y=0
 
   return (
-    <group ref={meshRef} position={position}>
-      {/* Main body */}
-      <mesh position={[0, 0.6, 0]}>
-        <boxGeometry args={[0.8, 1.2, 0.6]} />
-        <meshStandardMaterial color={alert ? "#E74C3C" : "#34495E"} />
-      </mesh>
-      
-      {/* Head */}
-      <mesh position={[0, 1.4, 0]}>
-        <boxGeometry args={[0.6, 0.6, 0.5]} />
-        <meshStandardMaterial color={alert ? "#C0392B" : "#2C3E50"} />
-      </mesh>
-      
-      {/* Eyes */}
-      <mesh ref={eyeLeftRef} position={[-0.15, 1.45, 0.26]}>
-        <sphereGeometry args={[0.08, 8, 8]} />
-        <meshStandardMaterial color="#FF0000" emissive="#FF0000" emissiveIntensity={0.3} />
-      </mesh>
-      <mesh ref={eyeRightRef} position={[0.15, 1.45, 0.26]}>
-        <sphereGeometry args={[0.08, 8, 8]} />
-        <meshStandardMaterial color="#FF0000" emissive="#FF0000" emissiveIntensity={0.3} />
-      </mesh>
-      
-      {/* Arms */}
-      <mesh position={[-0.5, 0.8, 0]}>
-        <boxGeometry args={[0.3, 0.8, 0.3]} />
-        <meshStandardMaterial color={alert ? "#E74C3C" : "#34495E"} />
-      </mesh>
-      <mesh position={[0.5, 0.8, 0]}>
-        <boxGeometry args={[0.3, 0.8, 0.3]} />
-        <meshStandardMaterial color={alert ? "#E74C3C" : "#34495E"} />
-      </mesh>
-      
-      {/* Alert aura */}
-      {alert && (
-        <mesh position={[0, 0.8, 0]}>
-          <sphereGeometry args={[1.5, 12, 12]} />
-          <meshStandardMaterial color="#E74C3C" transparent opacity={0.1} />
-        </mesh>
-      )}
+    <group position={position} rotation={[0, rotationY, 0]}>
+      {/* 
+        Adjust scale and position={[0, Y_OFFSET, 0]} of the primitive.
+        Y_OFFSET will place the model's feet at the desired Y position of the group (which is 0 in GameCanvas3D)
+        e.g., if model is 1 unit high and its center is at Y=0, its feet are at Y=-0.5.
+        To place feet at Y=0 for the group, primitive needs Y=0.5.
+        If model's pivot is at its feet (Y=0), and you want it 1.5 units high, scale=1.5, position={0,0,0}.
+        This is a trial-and-error adjustment based on your specific 'guards.glb'.
+      */}
+      <primitive object={scene} scale={modelScale} position={[0, modelOffset, 0]} /> 
     </group>
   );
 }
+// Preload the model to avoid pop-in
+useGLTF.preload('/guards.glb');
+
 
 // First Person Game Scene Component
 function GameScene({ 
@@ -213,7 +224,7 @@ function GameScene({
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
-  guardians: Array<{ x: number; y: number; alert: boolean }>,
+  guardians: Array<Guardian>, // Use updated Guardian interface
   onOrbClick: (index: number) => void,
   roomShift: { x: number, y: number, intensity: number },
   mazeLayout: number[][],
@@ -337,16 +348,17 @@ function GameScene({
         />
       ))}
 
-      {/* Guardians */}
+     {/* Guardians (using the new GLB model component) */}
       {guardians.map((guardian, index) => (
-        <Guardian
+        <GuardianModel
           key={`guardian-${index}`}
           position={[
-            (guardian.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-            0, // On the floor
-            (guardian.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
+            (guardian.x - MAP_COLS * TILE_SIZE / 2) / (TILE_SIZE / 2),
+            0, // Guardians stand on the floor (Y=0)
+            (guardian.y - MAP_ROWS * TILE_SIZE / 2) / (TILE_SIZE / 2)
           ]}
           alert={guardian.alert}
+          rotationY={guardian.rotationY}
         />
       ))}
 
@@ -729,7 +741,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-    1.6, // Eye level height - on the floor
+    1, // Eye level height - on the floor
     (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
   ];
 
