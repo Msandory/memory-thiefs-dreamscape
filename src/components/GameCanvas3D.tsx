@@ -28,6 +28,7 @@ import { getMaze } from '@/utils/mazeGenerator';
 
 interface PowerUp { x: number; y: number; type: PowerUpType; collected: boolean; pulse: number; }
 interface ActivePowerUp { type: PowerUpType; duration: number; maxDuration: number; }
+interface GameSettings { mouseSensitivity: number; mouseInvert: boolean; }
 interface GameCanvasProps { 
   isActive: boolean; 
   onGameStateChange: (state: 'playing' | 'paused' | 'gameOver' | 'victory') => void; 
@@ -44,6 +45,8 @@ interface GameCanvasProps {
   mind: MindType;
   mazeId: string;
   onScoreUpdate?: (score: number) => void;
+  gameSettings: GameSettings;
+  onSettingsChange: (settings: GameSettings) => void;
 }
 interface Guardian { x: number; y: number; directionX: number; directionY: number; alert: boolean; }
 
@@ -205,7 +208,8 @@ function GameScene({
   roomShift,
   mazeLayout,
   playerMovement,
-  gameState
+  gameState,
+  gameSettings
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
@@ -214,7 +218,8 @@ function GameScene({
   roomShift: { x: number, y: number, intensity: number },
   mazeLayout: number[][],
   playerMovement: { isMoving: boolean, isRunningFast: boolean },
-  gameState: 'idle' | 'playing'
+  gameState: 'idle' | 'playing',
+  gameSettings: GameSettings
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
@@ -236,9 +241,12 @@ function GameScene({
     const handleMouseMove = (event: MouseEvent) => {
       if (!mouseRef.current.isLocked) return;
 
-      const sensitivity = 0.002;
+      const sensitivity = gameSettings.mouseSensitivity * 0.002;
       rotationRef.current.y -= event.movementX * sensitivity; // Horizontal rotation
-      rotationRef.current.x -= event.movementY * sensitivity; // Vertical rotation
+      
+      // Apply mouse invert setting for vertical rotation
+      const verticalMovement = gameSettings.mouseInvert ? event.movementY : -event.movementY;
+      rotationRef.current.x += verticalMovement * sensitivity;
 
       // Clamp vertical rotation to prevent over-rotation
       rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
@@ -253,7 +261,7 @@ function GameScene({
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       document.removeEventListener('mousemove', handleMouseMove);
     };
-  }, [gl]);
+  }, [gl, gameSettings]);
 
   // Auto-eject mouse on game state changes
   useEffect(() => {
@@ -367,7 +375,7 @@ async function saveScore(playerName: string, time: number, difficulty: Difficult
 }
 
 export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
-  isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate,
+  isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate, gameSettings, onSettingsChange,
 }, ref) => {
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
   const [currentLevel, setCurrentLevel] = useState(1);
@@ -746,6 +754,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           mazeLayout={getCurrentRoomLayout()}
           playerMovement={playerMovement}
           gameState={gameState}
+          gameSettings={gameSettings}
         />
       </Canvas>
     </div>
