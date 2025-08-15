@@ -53,17 +53,22 @@ interface Guardian {
   directionY: number; 
   alert: boolean; 
   rotationY: number;
-  lastDirectionChange: number; // Add timestamp for direction changes
+  lastDirectionChange: number;
+  stuckCounter: number; // Track how long guardian has been stuck
 }
 
-function Wall({ position }: { position: [number, number, number] }) {
+function Wall({ position, onMeshReady }: { position: [number, number, number], onMeshReady?: (mesh: THREE.Mesh) => void }) {
   const texture = useTexture(brickWallTexture);
+  const meshRef = useRef<THREE.Mesh>(null);
   useEffect(() => {
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(1, 1);
-  }, [texture]);
+    if (meshRef.current && onMeshReady) {
+      onMeshReady(meshRef.current);
+    }
+  }, [texture, onMeshReady]);
   return (
-    <mesh position={position}>
+    <mesh ref={meshRef} position={position}>
       <boxGeometry args={[2, 4, 2]} />
       <meshStandardMaterial map={texture} />
     </mesh>
@@ -175,7 +180,7 @@ function GuardianModel({ position, alert, rotationY }: { position: [number, numb
 useGLTF.preload('/assets/3DModels/guards.glb');
 useGLTF.preload('/assets/3DModels/player1.glb');
 
-// ---------- 3D Scene ----------
+// ---------- Enhanced 3D Scene with Dynamic Camera ----------
 function GameScene({ 
   playerPosition,
   memoryOrbs,
@@ -188,7 +193,8 @@ function GameScene({
   gameSettings,
   thirdPerson,
   isSprinting,
-  cameraRotationRef
+  cameraRotationRef,
+  playerFacingDirection
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
@@ -201,12 +207,16 @@ function GameScene({
   gameSettings: GameSettings,
   thirdPerson: boolean,
   isSprinting?: boolean,
-  cameraRotationRef: React.MutableRefObject<{ x: number; y: number }>
+  cameraRotationRef: React.MutableRefObject<{ x: number; y: number }>,
+  playerFacingDirection: number
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
   const rotationRef = useRef({ x: 0, y: 0 });
   const mouseRef = useRef({ isLocked: false });
+  const raycaster = useRef(new THREE.Raycaster());
+  const wallMeshes = useRef<THREE.Mesh[]>([]);
+  
   // Pointer lock + mouse look
   useEffect(() => {
     const canvas = gl.domElement;
@@ -240,6 +250,19 @@ function GameScene({
     }
   }, [gameState]);
 
+  // Dynamic camera collision detection
+  const checkCameraCollision = useCallback((from: THREE.Vector3, to: THREE.Vector3): number => {
+    raycaster.current.set(from, to.clone().sub(from).normalize());
+    const intersects = raycaster.current.intersectObjects(wallMeshes.current, true);
+    
+    if (intersects.length > 0) {
+      const distance = from.distanceTo(to);
+      const collisionDistance = intersects[0].distance;
+      return Math.max(1, collisionDistance - 0.5); // Leave some buffer
+    }
+    return from.distanceTo(to);
+  }, []);
+
   useFrame(() => {
     const eyeHeight = 1.6;
     const px = playerPosition[0];
@@ -253,16 +276,37 @@ function GameScene({
       camera.position.set(px, eyeHeight, pz);
       camera.rotation.order = 'YXZ';
       camera.rotation.y = rotationRef.current.y;
-      camera.rotation.x = -rotationRef.current.x; // Fix camera inversion
+      camera.rotation.x = rotationRef.current.x;
     } else {
-      // Third-person: follow camera behind player
-      const distance = 4;
-      const height = 2;
+      // Enhanced third-person with dynamic zoom and collision detection
+      const baseDistance = 4;
+      const minDistance = 1.5;
+      const maxDistance = 6;
+      const height = 2.5;
+      
+      // Use camera yaw for third-person camera positioning
       const yaw = rotationRef.current.y;
-      const camX = px - Math.sin(yaw) * distance;
-      const camZ = pz - Math.cos(yaw) * distance;
-      camera.position.set(camX, height, camZ);
-      camera.lookAt(px, 1, pz);
+      const pitch = rotationRef.current.x * 0.3; // Reduce pitch influence
+      
+      // Calculate desired camera position
+      const desiredDistance = baseDistance;
+      const camX = px - Math.sin(yaw) * desiredDistance;
+      const camY = height - Math.sin(pitch) * 1;
+      const camZ = pz - Math.cos(yaw) * desiredDistance;
+      
+      const playerPos = new THREE.Vector3(px, 1, pz);
+      const desiredCamPos = new THREE.Vector3(camX, camY, camZ);
+      
+      // Check for wall collision and adjust distance
+      const actualDistance = checkCameraCollision(playerPos, desiredCamPos);
+      const clampedDistance = Math.max(minDistance, Math.min(maxDistance, actualDistance));
+      
+      // Apply the collision-adjusted distance
+      const finalCamX = px - Math.sin(yaw) * clampedDistance;
+      const finalCamZ = pz - Math.cos(yaw) * clampedDistance;
+      
+      camera.position.set(finalCamX, camY, finalCamZ);
+      camera.lookAt(px, 1.2, pz); // Look slightly above player feet
     }
 
     // Room shift effect
@@ -272,14 +316,22 @@ function GameScene({
     }
   });
 
-  // Build walls
+  // Build walls and store mesh references for collision detection
   const walls: JSX.Element[] = [];
+  wallMeshes.current = [];
+  
   for (let row = 0; row < MAP_ROWS; row++) {
     for (let col = 0; col < MAP_COLS; col++) {
       if (mazeLayout[row] && mazeLayout[row][col] === 1) {
         const x = (col - MAP_COLS / 2) * 2;
         const z = (row - MAP_ROWS / 2) * 2;
-        walls.push(<Wall key={`wall-${row}-${col}`} position={[x, 2, z]} />);
+        walls.push(
+          <Wall 
+            key={`wall-${row}-${col}`} 
+            position={[x, 2, z]} 
+            onMeshReady={(mesh) => wallMeshes.current.push(mesh)}
+          />
+        );
       }
     }
   }
@@ -301,7 +353,7 @@ function GameScene({
         visible={thirdPerson} 
         isSprinting={isSprinting} 
         isMoving={playerMovement.isMoving}
-        rotationY={rotationRef.current.y}
+        rotationY={thirdPerson ? playerFacingDirection : rotationRef.current.y}
       />
 
       {/* Memory Orbs on ground */}
@@ -370,7 +422,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   const [playerMovement, setPlayerMovement] = useState({ isMoving: false, isRunningFast: false });
   const [thirdPerson, setThirdPerson] = useState(true);
   const sprintingRef = useRef(false);
-  const keysPressed = useRef({ w: false, a: false, s: false, d: false });
+  const keysPressed = useRef({ w: false, a: false, s: false, d: false, shift: false });
   const [memoryOrbs, setMemoryOrbs] = useState<{ x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[]>([]);
   const [guardians, setGuardians] = useState<Guardian[]>([]);
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
@@ -403,6 +455,36 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     }; 
   };
 
+  // Enhanced collision detection with better precision
+  const checkCollisionEnhanced = useCallback((x: number, y: number, radius: number = 15) => {
+    const currentMap = getCurrentRoomLayout();
+    
+    // Check multiple points around the entity's perimeter for more accurate collision
+    const checkPoints = [
+      [x - radius, y - radius], // Top-left
+      [x + radius, y - radius], // Top-right
+      [x - radius, y + radius], // Bottom-left
+      [x + radius, y + radius], // Bottom-right
+      [x - radius, y],          // Left center
+      [x + radius, y],          // Right center
+      [x, y - radius],          // Top center
+      [x, y + radius]           // Bottom center
+    ];
+
+    return checkPoints.some(([px, py]) => {
+      const col = Math.floor(px / TILE_SIZE);
+      const row = Math.floor(py / TILE_SIZE);
+      
+      // Out of bounds check
+      if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) {
+        return true;
+      }
+      
+      // Wall collision check
+      return currentMap[row] && currentMap[row][col] === 1;
+    });
+  }, [getCurrentRoomLayout]);
+
   const getRandomSafePosition = useCallback(() => { 
     const currentMap = getCurrentRoomLayout(); 
     let pos: {x:number;y:number}|undefined; 
@@ -410,13 +492,16 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     do { 
       const randCol = Math.floor(Math.random() * MAP_COLS); 
       const randRow = Math.floor(Math.random() * MAP_ROWS); 
-      if (currentMap[randRow] && currentMap[randRow][randCol] === 0) { 
-        pos = { x: randCol * TILE_SIZE + TILE_SIZE / 2, y: randRow * TILE_SIZE + TILE_SIZE / 2 }; 
+      const x = randCol * TILE_SIZE + TILE_SIZE / 2;
+      const y = randRow * TILE_SIZE + TILE_SIZE / 2;
+      
+      if (currentMap[randRow] && currentMap[randRow][randCol] === 0 && !checkCollisionEnhanced(x, y)) { 
+        pos = { x, y }; 
       } 
       attempts++; 
     } while (!pos && attempts < 100); 
     return pos || { x: TILE_SIZE * 1.5, y: TILE_SIZE * 1.5 }; 
-  }, [getCurrentRoomLayout]);
+  }, [getCurrentRoomLayout, checkCollisionEnhanced]);
 
   const handleOrbClick = useCallback((orbIndex: number) => {
     const orb = memoryOrbs[orbIndex];
@@ -485,7 +570,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         directionY: Math.random() > 0.5 ? 1 : -1, 
         alert: false, 
         rotationY: 0,
-        lastDirectionChange: Date.now()
+        lastDirectionChange: Date.now(),
+        stuckCounter: 0
       }); 
     } 
     setMemoryOrbs(newOrbs); 
@@ -510,7 +596,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     getGuardians: () => guardians
   }));
 
-  // ---------- Keyboard (WASD + Shift toggle sprint + V toggle camera) ----------
+  // Enhanced keyboard controls with hold-to-sprint
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -519,8 +605,10 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         const moveKey = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'a' : key === 'arrowright' ? 'd' : key;
         if (moveKey in keysPressed.current) keysPressed.current[moveKey as 'w'|'a'|'s'|'d'] = true;
       }
+      // Hold-to-sprint instead of toggle
       if (key === 'shift') {
-        sprintingRef.current = !sprintingRef.current;
+        keysPressed.current.shift = true;
+        sprintingRef.current = true;
       }
       if (key === 'v') {
         setThirdPerson(prev => !prev);
@@ -534,6 +622,10 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       const key = e.key.toLowerCase();
       const moveKey = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'a' : key === 'arrowright' ? 'd' : key;
       if (moveKey in keysPressed.current) keysPressed.current[moveKey as 'w'|'a'|'s'|'d'] = false;
+      if (key === 'shift') {
+        keysPressed.current.shift = false;
+        sprintingRef.current = false;
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -543,7 +635,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     };
   }, [isActive, gameState, onGameStateChange]);
 
-  // ---------- Camera-Relative Movement System ----------
+  // Enhanced Movement System with better third-person controls
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     const moveInterval = setInterval(() => {
@@ -558,16 +650,13 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         setPlayer(prevPlayer => {
           let deltaX = 0;
           let deltaY = 0;
-          const playerRadius = 15;
+          const playerRadius = 12; // Slightly reduced for better navigation
 
-          // Get camera rotation from the scene (we'll pass this down)
+          // Use camera direction for movement in both views
           const cameraYaw = cameraRotationRef.current.y;
-
-          // Calculate forward/right vectors based on camera direction
           const forward = { x: Math.sin(cameraYaw), y: -Math.cos(cameraYaw) };
           const right = { x: Math.cos(cameraYaw), y: Math.sin(cameraYaw) };
 
-          // Calculate movement deltas relative to camera direction
           if (keys.w) { // Forward relative to camera
             deltaX += forward.x * speed;
             deltaY += forward.y * speed;
@@ -595,50 +684,29 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
             newRotationY = Math.atan2(deltaX, -deltaY); // Face movement direction
           }
 
-          // Collision detection function
-          const checkCollision = (x: number, y: number) => {
-            const col = Math.floor(x / TILE_SIZE);
-            const row = Math.floor(y / TILE_SIZE);
-            if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return true;
-            return currentMap[row] && currentMap[row][col] === 1;
-          };
+          // Enhanced collision detection with sliding
+          const canMoveX = !checkCollisionEnhanced(newX, prevPlayer.y, playerRadius);
+          const canMoveY = !checkCollisionEnhanced(prevPlayer.x, newY, playerRadius);
+          const canMoveBoth = !checkCollisionEnhanced(newX, newY, playerRadius);
 
-          // Check collision for all corners of player
-          const corners: [number,number][] = [
-            [newX - playerRadius, newY - playerRadius], // Top-left
-            [newX + playerRadius, newY - playerRadius], // Top-right
-            [newX - playerRadius, newY + playerRadius], // Bottom-left
-            [newX + playerRadius, newY + playerRadius]  // Bottom-right
-          ];
-
-          // Test X movement separately
-          const xCorners: [number,number][] = [
-            [newX - playerRadius, prevPlayer.y - playerRadius],
-            [newX + playerRadius, prevPlayer.y - playerRadius],
-            [newX - playerRadius, prevPlayer.y + playerRadius],
-            [newX + playerRadius, prevPlayer.y + playerRadius]
-          ];
-
-          // Test Y movement separately  
-          const yCorners: [number,number][] = [
-            [prevPlayer.x - playerRadius, newY - playerRadius],
-            [prevPlayer.x + playerRadius, newY - playerRadius],
-            [prevPlayer.x - playerRadius, newY + playerRadius],
-            [prevPlayer.x + playerRadius, newY + playerRadius]
-          ];
-
-          // Allow X movement if no collision
-          if (!xCorners.some(([x, y]) => checkCollision(x, y))) {
+          // Apply movement with wall sliding
+          if (canMoveBoth) {
+            // Full diagonal movement is possible
             prevPlayer.x = newX;
-          }
-
-          // Allow Y movement if no collision
-          if (!yCorners.some(([x, y]) => checkCollision(x, y))) {
+            prevPlayer.y = newY;
+          } else if (canMoveX) {
+            // Only X movement is possible (slide along Y wall)
+            prevPlayer.x = newX;
+          } else if (canMoveY) {
+            // Only Y movement is possible (slide along X wall)
             prevPlayer.y = newY;
           }
+          // If neither movement is possible, stay in place
 
           // Always update rotation when moving
-          prevPlayer.rotationY = newRotationY;
+          if (Math.abs(deltaX) > 0.1 || Math.abs(deltaY) > 0.1) {
+            prevPlayer.rotationY = newRotationY;
+          }
 
           return { ...prevPlayer };
         });
@@ -657,9 +725,9 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       }
     }, 16);
     return () => clearInterval(moveInterval);
-  }, [isActive, gameState, getCurrentRoomLayout, memoryOrbs, player, handleOrbClick]);
+  }, [isActive, gameState, getCurrentRoomLayout, memoryOrbs, player, handleOrbClick, thirdPerson, checkCollisionEnhanced]);
 
-  // ---------- Improved Guardians AI ----------
+  // Enhanced Guardian AI with better pathfinding and stuck detection
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     const guardianInterval = setInterval(() => {
@@ -675,113 +743,149 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
         let newX = guardian.x;
         let newY = guardian.y;
-        const guardianRadius = 15;
+        const guardianRadius = 12; // Reduced for better navigation
         let newDirectionX = guardian.directionX;
         let newDirectionY = guardian.directionY;
         let angle = guardian.rotationY;
-
-        // Collision check function for guardians
-        const checkGuardianCollision = (x: number, y: number) => {
-          const col = Math.floor(x / TILE_SIZE);
-          const row = Math.floor(y / TILE_SIZE);
-          if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return true;
-          return currentMap[row] && currentMap[row][col] === 1;
-        };
+        let stuckCounter = guardian.stuckCounter;
 
         if (isAlert) {
-          // Chase player when alert
-          const chaseSpeed = config.guardSpeed * 1.5;
+          // Enhanced chase behavior with pathfinding
+          const chaseSpeed = config.guardSpeed * 1.8;
           angle = Math.atan2(dy, dx);
-          newX += Math.cos(angle) * chaseSpeed;
-          newY += Math.sin(angle) * chaseSpeed;
-        } else {
-          // Normal patrol behavior
-          const patrolSpeed = config.guardSpeed * 0.5;
           
-          // Change direction periodically or when hitting wall
-          const shouldChangeDirection = currentTime - guardian.lastDirectionChange > 2000 + Math.random() * 3000;
+          const chaseX = Math.cos(angle) * chaseSpeed;
+          const chaseY = Math.sin(angle) * chaseSpeed;
+          
+          // Try direct path first
+          if (!checkCollisionEnhanced(newX + chaseX, newY + chaseY, guardianRadius)) {
+            newX += chaseX;
+            newY += chaseY;
+            stuckCounter = 0;
+          } else {
+            // Try alternative paths if direct path is blocked
+            const alternatives = [
+              { x: chaseX * 0.7 + Math.cos(angle + Math.PI/4) * chaseSpeed * 0.3, 
+                y: chaseY * 0.7 + Math.sin(angle + Math.PI/4) * chaseSpeed * 0.3 },
+              { x: chaseX * 0.7 + Math.cos(angle - Math.PI/4) * chaseSpeed * 0.3, 
+                y: chaseY * 0.7 + Math.sin(angle - Math.PI/4) * chaseSpeed * 0.3 },
+              { x: Math.cos(angle + Math.PI/2) * chaseSpeed * 0.8, 
+                y: Math.sin(angle + Math.PI/2) * chaseSpeed * 0.8 },
+              { x: Math.cos(angle - Math.PI/2) * chaseSpeed * 0.8, 
+                y: Math.sin(angle - Math.PI/2) * chaseSpeed * 0.8 }
+            ];
+            
+            let moved = false;
+            for (const alt of alternatives) {
+              if (!checkCollisionEnhanced(newX + alt.x, newY + alt.y, guardianRadius)) {
+                newX += alt.x;
+                newY += alt.y;
+                angle = Math.atan2(alt.y, alt.x);
+                moved = true;
+                stuckCounter = 0;
+                break;
+              }
+            }
+            
+            if (!moved) {
+              stuckCounter++;
+            }
+          }
+        } else {
+          // Enhanced patrol behavior
+          const patrolSpeed = config.guardSpeed * 0.6;
+          
+          // Check if guardian has been stuck
+          const timeSinceLastChange = currentTime - guardian.lastDirectionChange;
+          const shouldChangeDirection = stuckCounter > 5 || timeSinceLastChange > 3000 + Math.random() * 2000;
           
           // Calculate potential new position
           const potentialX = newX + newDirectionX * patrolSpeed;
           const potentialY = newY + newDirectionY * patrolSpeed;
           
-          // Check for wall collision
-          const corners: [number,number][] = [
-            [potentialX - guardianRadius, potentialY - guardianRadius],
-            [potentialX + guardianRadius, potentialY - guardianRadius],
-            [potentialX - guardianRadius, potentialY + guardianRadius],
-            [potentialX + guardianRadius, potentialY + guardianRadius]
-          ];
-          
-          const willCollide = corners.some(([x, y]) => checkGuardianCollision(x, y));
+          const willCollide = checkCollisionEnhanced(potentialX, potentialY, guardianRadius);
           
           if (willCollide || shouldChangeDirection) {
-            // Pick a new random direction
+            // Smart direction picking with preference for open areas
             const directions = [
-              { x: 1, y: 0 },   // Right
-              { x: -1, y: 0 },  // Left  
-              { x: 0, y: 1 },   // Down
-              { x: 0, y: -1 },  // Up
-              { x: 1, y: 1 },   // Diagonal down-right
-              { x: -1, y: 1 },  // Diagonal down-left
-              { x: 1, y: -1 },  // Diagonal up-right
-              { x: -1, y: -1 }  // Diagonal up-left
+              { x: 1, y: 0, weight: 1 },   // Right
+              { x: -1, y: 0, weight: 1 },  // Left  
+              { x: 0, y: 1, weight: 1 },   // Down
+              { x: 0, y: -1, weight: 1 },  // Up
+              { x: 0.7, y: 0.7, weight: 0.8 },   // Diagonal down-right
+              { x: -0.7, y: 0.7, weight: 0.8 },  // Diagonal down-left
+              { x: 0.7, y: -0.7, weight: 0.8 },  // Diagonal up-right
+              { x: -0.7, y: -0.7, weight: 0.8 }  // Diagonal up-left
             ];
             
+            // Filter valid directions and prefer those leading to open areas
             const validDirections = directions.filter(dir => {
-              const testX = newX + dir.x * patrolSpeed * 3; // Test further ahead
-              const testY = newY + dir.y * patrolSpeed * 3;
-              const testCorners: [number,number][] = [
-                [testX - guardianRadius, testY - guardianRadius],
-                [testX + guardianRadius, testY - guardianRadius],
-                [testX - guardianRadius, testY + guardianRadius],
-                [testX + guardianRadius, testY + guardianRadius]
-              ];
-              return !testCorners.some(([x, y]) => checkGuardianCollision(x, y));
-            });
+              const testDistance = patrolSpeed * 4; // Look ahead further
+              const testX = newX + dir.x * testDistance;
+              const testY = newY + dir.y * testDistance;
+              return !checkCollisionEnhanced(testX, testY, guardianRadius);
+            }).map(dir => ({
+              ...dir,
+              // Boost weight if direction leads away from walls
+              weight: dir.weight * (1 + Math.random() * 0.5)
+            }));
             
             if (validDirections.length > 0) {
-              const newDir = validDirections[Math.floor(Math.random() * validDirections.length)];
-              newDirectionX = newDir.x;
-              newDirectionY = newDir.y;
+              // Weighted random selection favoring better directions
+              const totalWeight = validDirections.reduce((sum, dir) => sum + dir.weight, 0);
+              let random = Math.random() * totalWeight;
+              
+              for (const dir of validDirections) {
+                random -= dir.weight;
+                if (random <= 0) {
+                  newDirectionX = dir.x;
+                  newDirectionY = dir.y;
+                  break;
+                }
+              }
+              
               guardian.lastDirectionChange = currentTime;
+              stuckCounter = 0;
             } else {
-              // If no valid directions, try opposite direction
-              newDirectionX = -guardian.directionX;
-              newDirectionY = -guardian.directionY;
+              // Emergency unstuck: try moving backwards
+              newDirectionX = -guardian.directionX + (Math.random() - 0.5) * 0.5;
+              newDirectionY = -guardian.directionY + (Math.random() - 0.5) * 0.5;
               guardian.lastDirectionChange = currentTime;
+              stuckCounter++;
             }
           }
           
           // Move in current direction
-          newX += newDirectionX * patrolSpeed;
-          newY += newDirectionY * patrolSpeed;
-          angle = Math.atan2(newDirectionY, newDirectionX);
+          const moveX = newDirectionX * patrolSpeed;
+          const moveY = newDirectionY * patrolSpeed;
           
-          // Final collision check - if still colliding, don't move
-          const finalCorners: [number,number][] = [
-            [newX - guardianRadius, newY - guardianRadius],
-            [newX + guardianRadius, newY - guardianRadius],
-            [newX - guardianRadius, newY + guardianRadius],
-            [newX + guardianRadius, newY + guardianRadius]
-          ];
-          
-          if (finalCorners.some(([x, y]) => checkGuardianCollision(x, y))) {
-            newX = guardian.x;
-            newY = guardian.y;
-            // Force direction change on next update
-            guardian.lastDirectionChange = 0;
+          if (!checkCollisionEnhanced(newX + moveX, newY + moveY, guardianRadius)) {
+            newX += moveX;
+            newY += moveY;
+            angle = Math.atan2(newDirectionY, newDirectionX);
+            stuckCounter = Math.max(0, stuckCounter - 1); // Reduce stuck counter when moving
+          } else {
+            stuckCounter++;
           }
+        }
+
+        // Emergency teleport if guardian is stuck for too long
+        if (stuckCounter > 50) {
+          const safePos = getRandomSafePosition();
+          newX = safePos.x;
+          newY = safePos.y;
+          stuckCounter = 0;
+          guardian.lastDirectionChange = currentTime;
+          console.log('Guardian teleported due to being stuck');
         }
 
         // Check if guardian caught player
         const catchDistance = Math.sqrt((newX - player.x) ** 2 + (newY - player.y) ** 2);
-        if (catchDistance < 30) {
+        if (catchDistance < 25) {
           // Game over - player caught
           onGameStateChange('gameOver');
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, timeRemaining, difficulty, score, mind);
-          // Don't set to idle - let parent component handle the game over state
         }
 
         return { 
@@ -791,14 +895,15 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           directionX: newDirectionX,
           directionY: newDirectionY,
           alert: isAlert, 
-          rotationY: angle 
+          rotationY: angle,
+          stuckCounter
         };
       }));
     }, 100);
     return () => clearInterval(guardianInterval);
-  }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind]);
+  }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, checkCollisionEnhanced, getRandomSafePosition]);
 
-  // ---------- Timer (show + callbacks) ----------
+  // Timer (show + callbacks)
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     const id = setInterval(() => {
@@ -810,7 +915,6 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           onGameStateChange('gameOver');
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, prev, difficulty, score, mind);
-          // Don't set to idle - let parent component handle the game over state
         }
         return next;
       });
@@ -818,7 +922,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     return () => clearInterval(id);
   }, [isActive, gameState, playerName, difficulty, score, mind, muted, onTimerActive, onTimerUpdate, onGameStateChange]);
 
-  // ---------- Check Victory Condition ----------
+  // Check Victory Condition
   useEffect(() => {
     const collectedOrbs = memoryOrbs.filter(orb => orb.collected).length;
     const totalOrbs = memoryOrbs.length;
@@ -832,7 +936,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     }
   }, [memoryOrbs, gameState, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind]);
 
-  // ---------- Init ----------
+  // Init
   useEffect(() => { 
     if (isActive && gameState === 'idle') resetGameState(1); 
   }, [isActive, gameState, resetGameState]);
@@ -869,8 +973,27 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           thirdPerson={thirdPerson}
           isSprinting={sprintingRef.current}
           cameraRotationRef={cameraRotationRef}
+          playerFacingDirection={player.rotationY}
         />
       </Canvas>
+      
+      {/* Enhanced Controls Instructions */}
+      <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white p-3 rounded-lg text-sm">
+        <div className="font-bold mb-2">Enhanced Controls:</div>
+        <div>WASD: Move</div>
+        <div>Hold Shift: Sprint</div>
+        <div>V: Toggle Camera</div>
+        <div>Mouse: Look Around</div>
+        <div>Click: Lock Mouse</div>
+        <div>ESC: Pause</div>
+        <div className="mt-2 text-xs text-gray-300">
+          Camera: {thirdPerson ? 'Third Person' : 'First Person'}
+        </div>
+        <div className="text-xs text-gray-300">
+          Sprint: {sprintingRef.current ? 'Active' : 'Inactive'}
+        </div>
+      </div>
+      
     </div>
   );
 });
