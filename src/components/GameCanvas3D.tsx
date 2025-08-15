@@ -1125,6 +1125,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           setTimeout(() => {
             setLoading(false);
             onLoadingStateChange?.(false, 100, 'Complete');
+            setGameState('playing');
             resetGameState(1);
           }, 500);
         }
@@ -1133,11 +1134,6 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       return () => clearInterval(stepInterval);
     }
   }, [isActive, gameState, resetGameState, onLoadingStateChange]);
-
-  // Init (only if not loading)
-  useEffect(() => { 
-    if (isActive && gameState === 'idle' && !loading) resetGameState(1); 
-  }, [isActive, gameState, resetGameState, loading]);
 
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
