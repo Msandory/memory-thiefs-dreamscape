@@ -45,6 +45,8 @@ interface GameCanvasProps {
   onScoreUpdate?: (score: number) => void;
   gameSettings: GameSettings;
   onSettingsChange: (settings: GameSettings) => void;
+  wallTexture?: string;
+  onLoadingStateChange?: (loading: boolean, progress: number, stage: string) => void;
 }
 
 interface Guardian { 
@@ -58,8 +60,12 @@ interface Guardian {
   stuckCounter: number; // Track how long guardian has been stuck
 }
 
-function Wall({ position, onMeshReady }: { position: [number, number, number], onMeshReady?: (mesh: THREE.Mesh) => void }) {
-  const texture = useTexture(brickWallTexture);
+function Wall({ position, onMeshReady, texture: wallTexture }: { 
+  position: [number, number, number], 
+  onMeshReady?: (mesh: THREE.Mesh) => void,
+  texture?: string
+}) {
+  const texture = useTexture(wallTexture || brickWallTexture);
   const meshRef = useRef<THREE.Mesh>(null);
   useEffect(() => {
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
@@ -241,7 +247,8 @@ function GameScene({
   thirdPerson,
   isSprinting,
   cameraRotationRef,
-  playerFacingDirection
+  playerFacingDirection,
+  wallTexture
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
@@ -257,7 +264,8 @@ function GameScene({
   thirdPerson: boolean,
   isSprinting?: boolean,
   cameraRotationRef: React.MutableRefObject<{ x: number; y: number }>,
-  playerFacingDirection: number
+  playerFacingDirection: number,
+  wallTexture?: string
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
@@ -277,7 +285,7 @@ function GameScene({
       if (!mouseRef.current.isLocked) return;
       const sensitivity = gameSettings.mouseSensitivity * 0.002;
       rotationRef.current.y -= event.movementX * sensitivity;
-      const verticalMovement = gameSettings.mouseInvert ? event.movementY : -event.movementY;
+      const verticalMovement = gameSettings.mouseInvert ? -event.movementY : event.movementY;
       rotationRef.current.x += verticalMovement * sensitivity;
       rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
     };
@@ -321,11 +329,12 @@ function GameScene({
     cameraRotationRef.current = rotationRef.current;
 
     if (!thirdPerson) {
-      // First-person: camera at player position
+      // First-person: camera at player position with fixed rotation
       camera.position.set(px, eyeHeight, pz);
       camera.rotation.order = 'YXZ';
       camera.rotation.y = rotationRef.current.y;
       camera.rotation.x = rotationRef.current.x;
+      camera.rotation.z = 0; // Prevent camera tilt/skew
     } else {
       // Third-person with fixed camera distance
       const baseDistance = 4;
@@ -362,6 +371,7 @@ function GameScene({
           <Wall 
             key={`wall-${row}-${col}`} 
             position={[x, 2, z]} 
+            texture={wallTexture}
             onMeshReady={(mesh) => wallMeshes.current.push(mesh)}
           />
         );
@@ -459,7 +469,7 @@ async function saveScore(playerName: string, time: number, difficulty: Difficult
 
 // ---------------- Main Component ----------------
 export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
-  isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate, gameSettings, onSettingsChange,
+  isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate, gameSettings, onSettingsChange, wallTexture, onLoadingStateChange
 }, ref) => {
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
   const [currentLevel, setCurrentLevel] = useState(1);
@@ -476,6 +486,9 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
   const [powerUps, setPowerUps] = useState<PowerUpItem[]>([]);
   const [currentMazeLayout, setCurrentMazeLayout] = useState<number[][]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStage, setLoadingStage] = useState('Initializing...');
   const cameraRotationRef = useRef({ x: 0, y: 0 });
   
   const soundsRef = useRef<{ orbCollect: Howl; guardianAlert: Howl; gameOver: Howl; victory: Howl; background: Howl; } | null>(null);
@@ -1083,10 +1096,48 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     }
   }, [memoryOrbs, gameState, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind]);
 
-  // Init
+  // Loading simulation
+  useEffect(() => {
+    if (isActive && gameState === 'idle') {
+      setLoading(true);
+      setLoadingProgress(0);
+      setLoadingStage('Loading maze layout...');
+      onLoadingStateChange?.(true, 0, 'Loading maze layout...');
+      
+      const loadingSteps = [
+        { progress: 20, stage: 'Generating player position...' },
+        { progress: 40, stage: 'Spawning memory orbs...' },
+        { progress: 60, stage: 'Initializing guardians...' },
+        { progress: 80, stage: 'Loading 3D models...' },
+        { progress: 100, stage: 'Ready to play!' }
+      ];
+      
+      let currentStep = 0;
+      const stepInterval = setInterval(() => {
+        if (currentStep < loadingSteps.length) {
+          const step = loadingSteps[currentStep];
+          setLoadingProgress(step.progress);
+          setLoadingStage(step.stage);
+          onLoadingStateChange?.(true, step.progress, step.stage);
+          currentStep++;
+        } else {
+          clearInterval(stepInterval);
+          setTimeout(() => {
+            setLoading(false);
+            onLoadingStateChange?.(false, 100, 'Complete');
+            resetGameState(1);
+          }, 500);
+        }
+      }, 300);
+      
+      return () => clearInterval(stepInterval);
+    }
+  }, [isActive, gameState, resetGameState, onLoadingStateChange]);
+
+  // Init (only if not loading)
   useEffect(() => { 
-    if (isActive && gameState === 'idle') resetGameState(1); 
-  }, [isActive, gameState, resetGameState]);
+    if (isActive && gameState === 'idle' && !loading) resetGameState(1); 
+  }, [isActive, gameState, resetGameState, loading]);
 
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
@@ -1099,6 +1150,24 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     const s = (t % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
   };
+
+  if (loading) {
+    return (
+      <div className="w-full h-full bg-background relative flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-xl font-bold text-foreground">Loading Memory Palace</div>
+          <div className="w-64 bg-muted rounded-full h-2">
+            <div 
+              className="bg-primary h-2 rounded-full transition-all duration-300"
+              style={{ width: `${loadingProgress}%` }}
+            />
+          </div>
+          <div className="text-sm text-muted-foreground">{loadingStage}</div>
+          <div className="text-xs text-muted-foreground">{loadingProgress}%</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full bg-background relative">
@@ -1123,6 +1192,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           isSprinting={sprintingRef.current}
           cameraRotationRef={cameraRotationRef}
           playerFacingDirection={player.rotationY}
+          wallTexture={wallTexture}
         />
       </Canvas>
       

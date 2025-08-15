@@ -125,6 +125,9 @@ const Index = () => {
     mouseSensitivity: 1.0,
     mouseInvert: false
   });
+  const [isGameLoading, setIsGameLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStage, setLoadingStage] = useState('');
 
   const gameCanvasRef = useRef<{ reset: () => void; retry: () => void; useThunder: () => void }>(null);
   const backgroundMusicRef = useRef<Howl | null>(null);
@@ -202,6 +205,12 @@ const Index = () => {
   const handleTimerActive = useCallback((isActive: boolean) => setTimerActive(isActive), []);
   const handleLevelChange = useCallback((level: number) => setCurrentLevel(level), []);
 
+  const handleLoadingStateChange = useCallback((loading: boolean, progress: number, stage: string) => {
+    setIsGameLoading(loading);
+    setLoadingProgress(progress);
+    setLoadingStage(stage);
+  }, []);
+
   // NEW: Callback to trigger useThunder from GameCanvas
   const handleSpacePress = useCallback(() => {
     if (gameCanvasRef.current?.useThunder) {
@@ -241,6 +250,7 @@ const Index = () => {
               onScoreUpdate={setScore}
               gameSettings={gameSettings}
               onSettingsChange={setGameSettings}
+              onLoadingStateChange={handleLoadingStateChange}
             />
             <GameHUD
               memoriesCollected={memoriesCollected}
@@ -257,6 +267,21 @@ const Index = () => {
               totalMemories={2 + (currentLevel - 1)}
             />
             <MinimapContainer gameCanvasRef={gameCanvasRef} tileSize={100} />
+            {isGameLoading && (
+              <div className="absolute inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center z-50">
+                <div className="text-center space-y-4 p-8">
+                  <h2 className="text-2xl font-bold text-foreground mb-4">Loading Memory Palace</h2>
+                  <div className="w-64 bg-muted rounded-full h-2">
+                    <div 
+                      className="bg-primary h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${loadingProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">{loadingStage}</p>
+                  <p className="text-xs text-muted-foreground">{Math.round(loadingProgress)}%</p>
+                </div>
+              </div>
+            )}
             {gameState === 'paused' && (
               <PauseMenu 
                 onResume={() => setGameState('playing')} 
