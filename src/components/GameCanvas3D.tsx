@@ -503,7 +503,11 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   useImperativeHandle(ref, () => ({
     reset: () => resetGameState(1),
     retry: () => { const newLevel = Math.max(1, currentLevel - 1); resetGameState(newLevel); },
-    useThunder: () => {}
+    useThunder: () => {},
+    getMazeLayout: () => getCurrentRoomLayout(),
+    getPlayerPosition: () => ({ x: player.x, y: player.y }),
+    getOrbs: () => memoryOrbs,
+    getGuardians: () => guardians
   }));
 
   // ---------- Keyboard (WASD + Shift toggle sprint + V toggle camera) ----------
@@ -777,7 +781,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           onGameStateChange('gameOver');
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, timeRemaining, difficulty, score, mind);
-          setGameState('idle');
+          // Don't set to idle - let parent component handle the game over state
         }
 
         return { 
@@ -806,7 +810,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           onGameStateChange('gameOver');
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, prev, difficulty, score, mind);
-          setGameState('idle');
+          // Don't set to idle - let parent component handle the game over state
         }
         return next;
       });

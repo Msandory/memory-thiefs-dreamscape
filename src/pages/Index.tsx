@@ -3,6 +3,7 @@ import { Howl } from "howler";
 import { MainMenu } from "@/components/MainMenu";
 import { GameCanvas3D } from "@/components/GameCanvas3D";
 import { GameHUD } from "@/components/GameHUD";
+import { MinimapContainer } from "@/components/MinimapContainer";
 import { PauseMenu } from "@/components/PauseMenu";
 import { GameOverScreen } from "@/components/GameOverScreen";
 import { InstructionsScreen } from "@/components/InstructionsScreen";
@@ -255,6 +256,7 @@ const Index = () => {
               currentLevel={currentLevel}
               totalMemories={2 + (currentLevel - 1)}
             />
+            <MinimapContainer gameCanvasRef={gameCanvasRef} tileSize={100} />
             {gameState === 'paused' && (
               <PauseMenu 
                 onResume={() => setGameState('playing')} 
