@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from "react";
-import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
-import { useGLTF, useTexture,useAnimations } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useGLTF, useTexture, useAnimations } from "@react-three/drei";
 import * as THREE from "three";
 import { Howl } from "howler";
 import { collection, addDoc } from "firebase/firestore";
@@ -19,14 +19,11 @@ import {
   MindType, 
   PowerUpType, 
   difficultyConfigs, 
-  commonConfig,
-  MINI_CHALLENGES,
-  SpecialOrb,
-  SPECIAL_ORB_TYPES
+  commonConfig
 } from '@/config/gameConfig';
 import { getMaze } from '@/utils/mazeGenerator';
 import { GLTF } from 'three-stdlib'; 
-interface PowerUp { x: number; y: number; type: PowerUpType; collected: boolean; pulse: number; }
+
 interface ActivePowerUp { type: PowerUpType; duration: number; maxDuration: number; }
 interface GameSettings { mouseSensitivity: number; mouseInvert: boolean; }
 interface GameCanvasProps { 
@@ -48,16 +45,23 @@ interface GameCanvasProps {
   gameSettings: GameSettings;
   onSettingsChange: (settings: GameSettings) => void;
 }
-interface Guardian { x: number; y: number; directionX: number; directionY: number; alert: boolean; rotationY: number; } // Added rotationY
-// Enhanced 3D Wall Component with texture
+
+interface Guardian { 
+  x: number; 
+  y: number; 
+  directionX: number; 
+  directionY: number; 
+  alert: boolean; 
+  rotationY: number;
+  lastDirectionChange: number; // Add timestamp for direction changes
+}
+
 function Wall({ position }: { position: [number, number, number] }) {
   const texture = useTexture(brickWallTexture);
-  
   useEffect(() => {
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(1, 1); // Repeat texture for better appearance
+    texture.repeat.set(1, 1);
   }, [texture]);
-
   return (
     <mesh position={position}>
       <boxGeometry args={[2, 4, 2]} />
@@ -66,45 +70,49 @@ function Wall({ position }: { position: [number, number, number] }) {
   );
 }
 
-// 3D Player Model Component
-function Player({ 
-  position, 
-  isMoving, 
-  isRunningFast 
-}: { 
-  position: [number, number, number],
-  isMoving: boolean,
-  isRunningFast: boolean
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  
-  // For now, use a simple 3D representation until GLB model is available
-  useFrame((state) => {
-    if (groupRef.current && isMoving) {
-      // Simple bob animation when moving
-      groupRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 8) * 0.1;
-    } else if (groupRef.current) {
-      groupRef.current.position.y = position[1];
+// ---------- Player 3D Model (GLB) ----------
+type PlayerGLTFResult = GLTF & { animations: THREE.AnimationClip[]; };
+function PlayerModel({ position, visible, isSprinting, isMoving, rotationY }: 
+  { position: [number, number, number], visible: boolean, isSprinting: boolean, isMoving: boolean, rotationY?: number }) {
+
+  const { scene, animations } = useGLTF('/assets/3DModels/player1.glb') as PlayerGLTFResult;
+  const { actions } = useAnimations(animations, scene);
+  const currentAction = useRef<THREE.AnimationAction | null>(null);
+
+  useEffect(() => {
+    const idle = actions['Idle'] || actions['idle'];
+    const run = actions['Running'] || actions['run'];
+    const runFast = actions['Run Fast'] || actions['run fast'] || actions['runFast'];
+
+    let nextAction: THREE.AnimationAction | undefined;
+
+    if (isSprinting) {
+      nextAction = runFast;
+    } else if (isMoving) {
+      nextAction = run;
+    } else {
+      nextAction = idle;
     }
-  });
+
+    if (nextAction && currentAction.current !== nextAction) {
+      currentAction.current?.fadeOut(0.1);
+      nextAction.reset().fadeIn(0.2).play();
+      currentAction.current = nextAction;
+    }
+
+    return () => {
+      nextAction?.fadeOut(0.1);
+    };
+  }, [isSprinting, isMoving, actions]);
 
   return (
-    <group ref={groupRef} position={position}>
-      {/* Player body - visible in third person if needed */}
-      <mesh position={[0, 0.8, 0]}>
-        <capsuleGeometry args={[0.3, 1.6]} />
-        <meshStandardMaterial color="#2E86AB" />
-      </mesh>
-      {/* Player head */}
-      <mesh position={[0, 1.7, 0]}>
-        <sphereGeometry args={[0.25]} />
-        <meshStandardMaterial color="#F4A261" />
-      </mesh>
+    <group position={[position[0], 0, position[2]]} rotation={[0, rotationY || 0, 0]} visible={visible}>
+      <primitive object={scene} scale={1.5} />
     </group>
   );
 }
 
-// Simple 3D Memory Orb Component
+// ---------- Memory Orb (on the floor) ----------
 function MemoryOrb({ 
   position, 
   collected, 
@@ -117,100 +125,57 @@ function MemoryOrb({
   onClick: () => void 
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  
   useFrame((state) => {
     if (meshRef.current && !collected) {
-      meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 2 + pulse) * 0.2;
       meshRef.current.rotation.y = state.clock.elapsedTime + pulse;
     }
   });
-
   if (collected) return null;
-
   return (
     <mesh ref={meshRef} position={position} onClick={onClick}>
-      <sphereGeometry args={[0.3, 12, 12]} />
+      <sphereGeometry args={[0.3, 16, 16]} />
       <meshStandardMaterial color="#9B59B6" emissive="#8E44AD" emissiveIntensity={0.5} />
     </mesh>
   );
 }
-// Type for GLTF model, adjust based on your GLB structure
-type GuardianGLTFResult = GLTF & {
-  nodes: {
-    // If your GLB has specific named meshes, list them here. Otherwise, you might not need `nodes`.
-  };
-  animations: THREE.AnimationClip[];
-};
-// Enhanced 3D Guardian Component (using GLB model)
-interface GuardianModelProps {
-  position: [number, number, number];
-  alert: boolean;
-  rotationY: number; // Y-axis rotation for facing direction
- 
-}
-// Enhanced 3D Guardian Component
-function GuardianModel({ position, alert, rotationY }: GuardianModelProps) {
-  // Load the GLB model from the public folder
+
+// ---------- Guardian 3D Model ----------
+type GuardianGLTFResult = GLTF & { animations: THREE.AnimationClip[]; };
+function GuardianModel({ position, alert, rotationY }: { position: [number, number, number]; alert: boolean; rotationY: number; }) {
   const { scene, animations } = useGLTF('/assets/3DModels/guards.glb') as GuardianGLTFResult;
-  const { actions, mixer } = useAnimations(animations, scene);
+  const { actions } = useAnimations(animations, scene);
   const currentAction = useRef<THREE.AnimationAction | null>(null);
-
-  // Set up animation logic
   useEffect(() => {
-    // IMPORTANT: Replace 'Walking' and 'Running' with the actual animation clip names from your GLB.
-    // Use a tool like https://gltf.report/ or https://sandbox.babylonjs.com/ to inspect your GLB.
-    const walkAction = actions['Walking']; 
-    const runAction = actions['Running']; 
-
-    if (walkAction) walkAction.loop = THREE.LoopRepeat;
-    if (runAction) runAction.loop = THREE.LoopRepeat;
-
+    const walkAction = actions['Walking'] || actions['Walk'];
+    const runAction = actions['Running'] || actions['Run'];
     if (alert) {
       if (currentAction.current !== runAction) {
         currentAction.current?.fadeOut(0.2);
         runAction?.reset().fadeIn(0.2).play();
-        currentAction.current = runAction;
+        currentAction.current = runAction || null;
       }
     } else {
       if (currentAction.current !== walkAction) {
         currentAction.current?.fadeOut(0.2);
         walkAction?.reset().fadeIn(0.2).play();
-        currentAction.current = walkAction;
+        currentAction.current = walkAction || null;
       }
     }
-    
     return () => {
-      // Clean up actions on unmount or state change
-      walkAction?.fadeOut(0.5);
-      runAction?.fadeOut(0.5);
+      walkAction?.fadeOut(0.1);
+      runAction?.fadeOut(0.1);
     };
   }, [alert, actions]);
-  // Adjust scale and position offsets based on your model's size and origin
-  // If walls are 2 units high, player eye is 1.6, a guardian might be 1.5 units high.
-  // Assuming model's pivot is at its base (y=0)
-  const modelHeight = 1.5; // Desired height of the guardian in 3D units
-  const modelScale = modelHeight; // If original model is 1 unit tall
-  const modelOffset = 0; // If model's feet are at Y=0
-
   return (
-    <group position={position} rotation={[0, rotationY, 0]}>
-      {/* 
-        Adjust scale and position={[0, Y_OFFSET, 0]} of the primitive.
-        Y_OFFSET will place the model's feet at the desired Y position of the group (which is 0 in GameCanvas3D)
-        e.g., if model is 1 unit high and its center is at Y=0, its feet are at Y=-0.5.
-        To place feet at Y=0 for the group, primitive needs Y=0.5.
-        If model's pivot is at its feet (Y=0), and you want it 1.5 units high, scale=1.5, position={0,0,0}.
-        This is a trial-and-error adjustment based on your specific 'guards.glb'.
-      */}
-      <primitive object={scene} scale={modelScale} position={[0, modelOffset, 0]} /> 
+    <group position={[position[0], 0, position[2]]} rotation={[0, rotationY, 0]}>
+      <primitive object={scene} scale={1.5} />
     </group>
   );
 }
-// Preload the model to avoid pop-in
-useGLTF.preload('/guards.glb');
+useGLTF.preload('/assets/3DModels/guards.glb');
+useGLTF.preload('/assets/3DModels/player1.glb');
 
-
-// First Person Game Scene Component
+// ---------- 3D Scene ----------
 function GameScene({ 
   playerPosition,
   memoryOrbs,
@@ -220,53 +185,45 @@ function GameScene({
   mazeLayout,
   playerMovement,
   gameState,
-  gameSettings
+  gameSettings,
+  thirdPerson,
+  isSprinting 
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
-  guardians: Array<Guardian>, // Use updated Guardian interface
+  guardians: Array<Guardian>,
   onOrbClick: (index: number) => void,
   roomShift: { x: number, y: number, intensity: number },
   mazeLayout: number[][],
   playerMovement: { isMoving: boolean, isRunningFast: boolean },
   gameState: 'idle' | 'playing',
-  gameSettings: GameSettings
+  gameSettings: GameSettings,
+  thirdPerson: boolean,
+  isSprinting?: boolean
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
   const rotationRef = useRef({ x: 0, y: 0 });
   const mouseRef = useRef({ isLocked: false });
-
-  // Mouse look controls with auto-eject on game state changes
+  const cameraRotationRef = useRef({ x: 0, y: 0 });
+  // Pointer lock + mouse look
   useEffect(() => {
     const canvas = gl.domElement;
-    
-    const handleClick = () => {
-      canvas.requestPointerLock();
-    };
-
+    const handleClick = () => canvas.requestPointerLock();
     const handlePointerLockChange = () => {
       mouseRef.current.isLocked = document.pointerLockElement === canvas;
     };
-
     const handleMouseMove = (event: MouseEvent) => {
       if (!mouseRef.current.isLocked) return;
-
       const sensitivity = gameSettings.mouseSensitivity * 0.002;
-      rotationRef.current.y -= event.movementX * sensitivity; // Horizontal rotation
-      
-      // Apply mouse invert setting for vertical rotation
+      rotationRef.current.y -= event.movementX * sensitivity;
       const verticalMovement = gameSettings.mouseInvert ? event.movementY : -event.movementY;
       rotationRef.current.x += verticalMovement * sensitivity;
-
-      // Clamp vertical rotation to prevent over-rotation
       rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
     };
-
     canvas.addEventListener('click', handleClick);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
     document.addEventListener('mousemove', handleMouseMove);
-
     return () => {
       canvas.removeEventListener('click', handleClick);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
@@ -274,7 +231,7 @@ function GameScene({
     };
   }, [gl, gameSettings]);
 
-  // Auto-eject mouse on game state changes
+  // Auto-eject on pause
   useEffect(() => {
     if (gameState !== 'playing') {
       document.exitPointerLock();
@@ -283,14 +240,30 @@ function GameScene({
   }, [gameState]);
 
   useFrame(() => {
-    // Update camera position to player position for first person view
-    camera.position.set(...playerPosition);
-    
-    // Apply mouse rotation
-    camera.rotation.order = 'YXZ';
-    camera.rotation.y = rotationRef.current.y;
-    camera.rotation.x = rotationRef.current.x;
-    
+    const eyeHeight = 1.6;
+    const px = playerPosition[0];
+    const pz = playerPosition[2];
+
+    // Store camera rotation for movement calculations
+    cameraRotationRef.current = rotationRef.current;
+
+    if (!thirdPerson) {
+      // First-person: camera movement relative to player's view direction
+      camera.position.set(px, eyeHeight, pz);
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = rotationRef.current.y;
+      camera.rotation.x = rotationRef.current.x;
+    } else {
+      // Third-person: follow camera behind player
+      const distance = 4;
+      const height = 2;
+      const yaw = rotationRef.current.y;
+      const camX = px - Math.sin(yaw) * distance;
+      const camZ = pz - Math.cos(yaw) * distance;
+      camera.position.set(camX, height, camZ);
+      camera.lookAt(px, 1, pz);
+    }
+
     // Room shift effect
     if (groupRef.current && roomShift.intensity > 0) {
       groupRef.current.position.x = roomShift.x * roomShift.intensity;
@@ -298,19 +271,14 @@ function GameScene({
     }
   });
 
-  // Generate 3D walls from 2D maze
+  // Build walls
   const walls: JSX.Element[] = [];
   for (let row = 0; row < MAP_ROWS; row++) {
     for (let col = 0; col < MAP_COLS; col++) {
       if (mazeLayout[row] && mazeLayout[row][col] === 1) {
         const x = (col - MAP_COLS / 2) * 2;
         const z = (row - MAP_ROWS / 2) * 2;
-        walls.push(
-          <Wall 
-            key={`wall-${row}-${col}`}
-            position={[x, 2, z]} 
-          />
-        );
+        walls.push(<Wall key={`wall-${row}-${col}`} position={[x, 2, z]} />);
       }
     }
   }
@@ -318,7 +286,7 @@ function GameScene({
   return (
     <group ref={groupRef}>
       {/* Floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[MAP_COLS * 2, MAP_ROWS * 2]} />
         <meshStandardMaterial color="#1a1a1a" />
       </mesh>
@@ -326,20 +294,22 @@ function GameScene({
       {/* Walls */}
       {walls}
 
-      {/* Player - hidden in first person, but keep for potential third person mode */}
-      <Player 
+      {/* Player model with proper rotation */}
+      <PlayerModel 
         position={playerPosition} 
-        isMoving={playerMovement?.isMoving || false}
-        isRunningFast={playerMovement?.isRunningFast || false}
+        visible={thirdPerson} 
+        isSprinting={isSprinting} 
+        isMoving={playerMovement.isMoving}
+        rotationY={rotationRef.current.y}
       />
 
-      {/* Memory Orbs */}
+      {/* Memory Orbs on ground */}
       {memoryOrbs.map((orb, index) => (
         <MemoryOrb
           key={`orb-${index}`}
           position={[
             (orb.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-            1.5,
+            0.3,
             (orb.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
           ]}
           collected={orb.collected}
@@ -348,13 +318,13 @@ function GameScene({
         />
       ))}
 
-     {/* Guardians (using the new GLB model component) */}
+      {/* Guardians */}
       {guardians.map((guardian, index) => (
         <GuardianModel
           key={`guardian-${index}`}
           position={[
             (guardian.x - MAP_COLS * TILE_SIZE / 2) / (TILE_SIZE / 2),
-            0, // Guardians stand on the floor (Y=0)
+            0,
             (guardian.y - MAP_ROWS * TILE_SIZE / 2) / (TILE_SIZE / 2)
           ]}
           alert={guardian.alert}
@@ -363,9 +333,9 @@ function GameScene({
       ))}
 
       {/* Lighting */}
-      <ambientLight intensity={0.4} />
+      <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1} />
-      <pointLight position={[0, 5, 0]} intensity={0.5} color="#9B59B6" />
+      <pointLight position={[0, 5, 0]} intensity={0.5} />
     </group>
   );
 }
@@ -386,6 +356,7 @@ async function saveScore(playerName: string, time: number, difficulty: Difficult
   }
 }
 
+// ---------------- Main Component ----------------
 export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate, gameSettings, onSettingsChange,
 }, ref) => {
@@ -394,22 +365,22 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [score, setScore] = useState(0);
   const [roomShift, setRoomShift] = useState({ x: 0, y: 0, intensity: 0 });
-  const [player, setPlayer] = useState({ x: 100, y: 100, size: 20 });
+  const [player, setPlayer] = useState({ x: 100, y: 100, size: 20, rotationY: 0 });
   const [playerMovement, setPlayerMovement] = useState({ isMoving: false, isRunningFast: false });
+  const [thirdPerson, setThirdPerson] = useState(true);
+  const sprintingRef = useRef(false);
   const keysPressed = useRef({ w: false, a: false, s: false, d: false });
   const [memoryOrbs, setMemoryOrbs] = useState<{ x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[]>([]);
   const [guardians, setGuardians] = useState<Guardian[]>([]);
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
   const [currentMazeLayout, setCurrentMazeLayout] = useState<number[][]>([]);
+  const cameraRotationRef = useRef({ x: 0, y: 0 });
   
   const soundsRef = useRef<{ orbCollect: Howl; guardianAlert: Howl; gameOver: Howl; victory: Howl; background: Howl; } | null>(null);
   const timerStarted = useRef(false);
 
   const getCurrentRoomLayout = useCallback(() => {
-    if (currentMazeLayout.length > 0) {
-      return currentMazeLayout;
-    }
-    
+    if (currentMazeLayout.length > 0) return currentMazeLayout;
     const maze = getMaze(mazeId);
     if (maze && maze.layout) {
       setCurrentMazeLayout(maze.layout);
@@ -433,56 +404,47 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
   const getRandomSafePosition = useCallback(() => { 
     const currentMap = getCurrentRoomLayout(); 
-    let pos; 
+    let pos: {x:number;y:number}|undefined; 
     let attempts = 0; 
     do { 
       const randCol = Math.floor(Math.random() * MAP_COLS); 
       const randRow = Math.floor(Math.random() * MAP_ROWS); 
       if (currentMap[randRow] && currentMap[randRow][randCol] === 0) { 
-        pos = { x: randCol * TILE_SIZE + TILE_SIZE / 2, y: randRow * TILE_SIZE + TILE_SIZE / 2, }; 
+        pos = { x: randCol * TILE_SIZE + TILE_SIZE / 2, y: randRow * TILE_SIZE + TILE_SIZE / 2 }; 
       } 
       attempts++; 
     } while (!pos && attempts < 100); 
     return pos || { x: TILE_SIZE * 1.5, y: TILE_SIZE * 1.5 }; 
   }, [getCurrentRoomLayout]);
 
-  // Handle orb collection in 3D
   const handleOrbClick = useCallback((orbIndex: number) => {
     const orb = memoryOrbs[orbIndex];
     if (!orb || orb.collected) return;
-
-    const dx = player.x - orb.x;
-    const dy = player.y - orb.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance < 60) {
+    
+    // Convert 3D world position back to 2D game coordinates for distance calculation
+    const worldToGameX = (orb.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2;
+    const worldToGameZ = (orb.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2;
+    const playerWorldX = (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2;
+    const playerWorldZ = (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2;
+    
+    const dx = playerWorldX - worldToGameX;
+    const dz = playerWorldZ - worldToGameZ;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+    
+    if (distance < 2) { // Reduced distance for easier collection in 3D
       const newOrbs = [...memoryOrbs];
       newOrbs[orbIndex] = { ...orb, collected: true, collectingTime: Date.now() };
       setMemoryOrbs(newOrbs);
-      
       const newScore = score + 1;
       setScore(newScore);
       onScoreUpdate?.(newScore);
       onMemoryCollected();
-
-      // Room shift effect
-      setRoomShift({
-        x: (Math.random() - 0.5) * 0.5,
-        y: (Math.random() - 0.5) * 0.5,
-        intensity: 1
-      });
-
-      setTimeout(() => {
-        setRoomShift(prev => ({ ...prev, intensity: 0 }));
-      }, 300);
-
-      if (soundsRef.current && !muted) {
-        soundsRef.current.orbCollect.play();
-      }
+      setRoomShift({ x: (Math.random() - 0.5) * 0.5, y: (Math.random() - 0.5) * 0.5, intensity: 1 });
+      setTimeout(() => setRoomShift(prev => ({ ...prev, intensity: 0 })), 300);
+      if (soundsRef.current && !muted) soundsRef.current.orbCollect.play();
     }
   }, [memoryOrbs, player, score, muted, onMemoryCollected, onScoreUpdate]);
 
-  // Initialize sounds
   useEffect(() => { 
     soundsRef.current = { 
       orbCollect: new Howl({ src: [orbCollect], volume: 0.5 }), 
@@ -491,94 +453,83 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       victory: new Howl({ src: [victory], volume: 0.7 }), 
       background: new Howl({ src: [backgroundMusic], loop: true, volume: 0.3 }), 
     }; 
-    return () => { 
-      if (soundsRef.current) Object.values(soundsRef.current).forEach(sound => sound.unload()); 
-    }; 
+    return () => { if (soundsRef.current) Object.values(soundsRef.current).forEach(sound => sound.unload()); }; 
   }, []);
 
-  // Game initialization and reset logic
   const resetGameState = useCallback((level: number = 1) => { 
     setActivePowerUps([]); 
-    
     const config = getLevelConfig(level); 
     const newPlayerPos = getRandomSafePosition();
-    setPlayer({ ...newPlayerPos, size: 20 }); 
-    
-    // Initialize orbs and guardians
+    setPlayer({ ...newPlayerPos, size: 20, rotationY: 0 }); 
     const newOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[] = []; 
     const newGuardians: Guardian[] = []; 
     const spawnedPositions: {x: number, y: number}[] = [newPlayerPos]; 
-    
     for (let i = 0; i < config.orbs; i++) { 
       let newPos; 
-      do { 
-        newPos = getRandomSafePosition(); 
-      } while (spawnedPositions.some(p => {
-        const dx = newPos.x - p.x;
-        const dy = newPos.y - p.y;
-        return Math.sqrt(dx * dx + dy * dy) < commonConfig.safeDistance;
+      do { newPos = getRandomSafePosition(); } while (spawnedPositions.some(p => {
+        const dx = newPos.x - p.x; const dy = newPos.y - p.y; return Math.sqrt(dx*dx + dy*dy) < commonConfig.safeDistance;
       })); 
       spawnedPositions.push(newPos); 
       newOrbs.push({ ...newPos, collected: false, pulse: Math.random() * Math.PI * 2, collectingTime: 0 }); 
     } 
-    
     for (let i = 0; i < config.guards; i++) { 
       let newPos; 
-      do { 
-        newPos = getRandomSafePosition(); 
-      } while (spawnedPositions.some(p => {
-        const dx = newPos.x - p.x;
-        const dy = newPos.y - p.y;
-        return Math.sqrt(dx * dx + dy * dy) < commonConfig.safeDistance;
+      do { newPos = getRandomSafePosition(); } while (spawnedPositions.some(p => {
+        const dx = newPos.x - p.x; const dy = newPos.y - p.y; return Math.sqrt(dx*dx + dy*dy) < commonConfig.safeDistance;
       })); 
       spawnedPositions.push(newPos); 
-      newGuardians.push({ ...newPos, directionX: Math.random() > 0.5 ? 1 : -1, directionY: Math.random() > 0.5 ? 1 : -1, alert: false }); 
+      newGuardians.push({ 
+        ...newPos, 
+        directionX: Math.random() > 0.5 ? 1 : -1, 
+        directionY: Math.random() > 0.5 ? 1 : -1, 
+        alert: false, 
+        rotationY: 0,
+        lastDirectionChange: Date.now()
+      }); 
     } 
-    
     setMemoryOrbs(newOrbs); 
     setGuardians(newGuardians); 
     timerStarted.current = true; 
-    setTimeRemaining(config.timer); 
+    const t = config.timer;
+    setTimeRemaining(t); 
+    onTimerUpdate?.(t);
+    onTimerActive?.(true);
     setCurrentLevel(level); 
     setGameState('playing'); 
     onGameStateChange('playing'); 
-  }, [getLevelConfig, getRandomSafePosition, onGameStateChange]);
+  }, [getLevelConfig, getRandomSafePosition, onGameStateChange, onTimerActive, onTimerUpdate]);
 
   useImperativeHandle(ref, () => ({
     reset: () => resetGameState(1),
-    retry: () => {
-      const newLevel = Math.max(1, currentLevel - 1);
-      resetGameState(newLevel);
-    },
+    retry: () => { const newLevel = Math.max(1, currentLevel - 1); resetGameState(newLevel); },
     useThunder: () => {}
   }));
 
-  // Enhanced keyboard controls for 3D movement with proper collision detection
+  // ---------- Keyboard (WASD + Shift toggle sprint + V toggle camera) ----------
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+      if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(key)) {
         const moveKey = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'a' : key === 'arrowright' ? 'd' : key;
-        if (moveKey === 'w' || moveKey === 'a' || moveKey === 's' || moveKey === 'd') {
-          keysPressed.current[moveKey] = true;
-        }
+        if (moveKey in keysPressed.current) keysPressed.current[moveKey as 'w'|'a'|'s'|'d'] = true;
+      }
+      if (key === 'shift') {
+        sprintingRef.current = !sprintingRef.current;
+      }
+      if (key === 'v') {
+        setThirdPerson(prev => !prev);
       }
       if (key === 'escape') {
-        document.exitPointerLock();
         onGameStateChange('paused');
+        document.exitPointerLock();
       }
     };
-
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       const moveKey = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'a' : key === 'arrowright' ? 'd' : key;
-      if (moveKey === 'w' || moveKey === 'a' || moveKey === 's' || moveKey === 'd') {
-        keysPressed.current[moveKey] = false;
-      }
+      if (moveKey in keysPressed.current) keysPressed.current[moveKey as 'w'|'a'|'s'|'d'] = false;
     };
-
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
@@ -587,176 +538,328 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     };
   }, [isActive, gameState, onGameStateChange]);
 
-  // Movement loop with proper collision detection
+  // ---------- Camera-Relative Movement System ----------
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
-
     const moveInterval = setInterval(() => {
       const currentMap = getCurrentRoomLayout();
       const keys = keysPressed.current;
       const isMovingNow = keys.w || keys.a || keys.s || keys.d;
-      
-      // Check if player is near guardians for fast run mode
-      const nearGuardian = guardians.some(guardian => {
-        const dx = player.x - guardian.x;
-        const dy = player.y - guardian.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < 100 && guardian.alert;
-      });
 
-      const speed = nearGuardian ? 8 : 4;
-      
-      setPlayerMovement({
-        isMoving: isMovingNow,
-        isRunningFast: nearGuardian && isMovingNow
-      });
+      const speed = sprintingRef.current ? 8 : 4;
+      setPlayerMovement({ isMoving: isMovingNow, isRunningFast: sprintingRef.current && isMovingNow });
 
       if (isMovingNow) {
         setPlayer(prevPlayer => {
-          let newX = prevPlayer.x;
-          let newY = prevPlayer.y;
-          const playerRadius = 15; // Player collision radius
+          let deltaX = 0;
+          let deltaY = 0;
+          const playerRadius = 15;
 
-          // Calculate potential new position
-          if (keys.w) newY -= speed;
-          if (keys.s) newY += speed;
-          if (keys.a) newX -= speed;
-          if (keys.d) newX += speed;
+          // Get camera rotation from the scene (we'll pass this down)
+          const cameraYaw = cameraRotationRef.current.y;
 
-          // Check collision with walls using player radius
+          // Calculate forward/right vectors based on camera direction
+          const forward = { x: Math.sin(cameraYaw), y: -Math.cos(cameraYaw) };
+          const right = { x: Math.cos(cameraYaw), y: Math.sin(cameraYaw) };
+
+          // Calculate movement deltas relative to camera direction
+          if (keys.w) { // Forward relative to camera
+            deltaX += forward.x * speed;
+            deltaY += forward.y * speed;
+          }
+          if (keys.s) { // Backward relative to camera
+            deltaX -= forward.x * speed;
+            deltaY -= forward.y * speed;
+          }
+          if (keys.a) { // Left relative to camera
+            deltaX -= right.x * speed;
+            deltaY -= right.y * speed;
+          }
+          if (keys.d) { // Right relative to camera
+            deltaX += right.x * speed;
+            deltaY += right.y * speed;
+          }
+
+          // Calculate new position
+          let newX = prevPlayer.x + deltaX;
+          let newY = prevPlayer.y + deltaY;
+
+          // Update player rotation to face movement direction
+          let newRotationY = prevPlayer.rotationY;
+          if (Math.abs(deltaX) > 0.1 || Math.abs(deltaY) > 0.1) {
+            newRotationY = Math.atan2(deltaX, -deltaY); // Face movement direction
+          }
+
+          // Collision detection function
           const checkCollision = (x: number, y: number) => {
             const col = Math.floor(x / TILE_SIZE);
             const row = Math.floor(y / TILE_SIZE);
-            
-            // Check bounds
             if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return true;
-            
-            // Check if tile is a wall
             return currentMap[row] && currentMap[row][col] === 1;
           };
 
-          // Check collision at player's corners
-          const corners = [
+          // Check collision for all corners of player
+          const corners: [number,number][] = [
             [newX - playerRadius, newY - playerRadius], // Top-left
             [newX + playerRadius, newY - playerRadius], // Top-right
             [newX - playerRadius, newY + playerRadius], // Bottom-left
             [newX + playerRadius, newY + playerRadius]  // Bottom-right
           ];
 
-          // Only move if no collision detected
-          if (!corners.some(([x, y]) => checkCollision(x, y))) {
-            return { ...prevPlayer, x: newX, y: newY };
+          // Test X movement separately
+          const xCorners: [number,number][] = [
+            [newX - playerRadius, prevPlayer.y - playerRadius],
+            [newX + playerRadius, prevPlayer.y - playerRadius],
+            [newX - playerRadius, prevPlayer.y + playerRadius],
+            [newX + playerRadius, prevPlayer.y + playerRadius]
+          ];
+
+          // Test Y movement separately  
+          const yCorners: [number,number][] = [
+            [prevPlayer.x - playerRadius, newY - playerRadius],
+            [prevPlayer.x + playerRadius, newY - playerRadius],
+            [prevPlayer.x - playerRadius, newY + playerRadius],
+            [prevPlayer.x + playerRadius, newY + playerRadius]
+          ];
+
+          // Allow X movement if no collision
+          if (!xCorners.some(([x, y]) => checkCollision(x, y))) {
+            prevPlayer.x = newX;
           }
-          
-          return prevPlayer;
+
+          // Allow Y movement if no collision
+          if (!yCorners.some(([x, y]) => checkCollision(x, y))) {
+            prevPlayer.y = newY;
+          }
+
+          // Always update rotation when moving
+          prevPlayer.rotationY = newRotationY;
+
+          return { ...prevPlayer };
+        });
+
+        // Auto-collect nearby orbs
+        memoryOrbs.forEach((orb, index) => {
+          if (!orb.collected) {
+            const dx = player.x - orb.x;
+            const dy = player.y - orb.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < 40) { // Auto-collect distance
+              handleOrbClick(index);
+            }
+          }
         });
       }
     }, 16);
-
     return () => clearInterval(moveInterval);
-  }, [isActive, gameState, getCurrentRoomLayout, guardians, player]);
+  }, [isActive, gameState, getCurrentRoomLayout, memoryOrbs, player, handleOrbClick]);
 
-  // Guardian movement with improved collision detection
+  // ---------- Improved Guardians AI ----------
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
-
     const guardianInterval = setInterval(() => {
       const currentMap = getCurrentRoomLayout();
       const config = getLevelConfig(currentLevel);
+      const currentTime = Date.now();
       
-      setGuardians(prevGuardians => {
-        return prevGuardians.map(guardian => {
-          const dx = player.x - guardian.x;
-          const dy = player.y - guardian.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
+      setGuardians(prevGuardians => prevGuardians.map(guardian => {
+        const dx = player.x - guardian.x;
+        const dy = player.y - guardian.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const isAlert = distance < 120;
+
+        let newX = guardian.x;
+        let newY = guardian.y;
+        const guardianRadius = 15;
+        let newDirectionX = guardian.directionX;
+        let newDirectionY = guardian.directionY;
+        let angle = guardian.rotationY;
+
+        // Collision check function for guardians
+        const checkGuardianCollision = (x: number, y: number) => {
+          const col = Math.floor(x / TILE_SIZE);
+          const row = Math.floor(y / TILE_SIZE);
+          if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return true;
+          return currentMap[row] && currentMap[row][col] === 1;
+        };
+
+        if (isAlert) {
+          // Chase player when alert
+          const chaseSpeed = config.guardSpeed * 1.5;
+          angle = Math.atan2(dy, dx);
+          newX += Math.cos(angle) * chaseSpeed;
+          newY += Math.sin(angle) * chaseSpeed;
+        } else {
+          // Normal patrol behavior
+          const patrolSpeed = config.guardSpeed * 0.5;
           
-          // Check if player is detected
-          const isAlert = distance < 120;
+          // Change direction periodically or when hitting wall
+          const shouldChangeDirection = currentTime - guardian.lastDirectionChange > 2000 + Math.random() * 3000;
           
-          let newX = guardian.x;
-          let newY = guardian.y;
-          const guardianRadius = 15;
+          // Calculate potential new position
+          const potentialX = newX + newDirectionX * patrolSpeed;
+          const potentialY = newY + newDirectionY * patrolSpeed;
           
-          if (isAlert) {
-            // Chase player
-            const angle = Math.atan2(dy, dx);
-            newX += Math.cos(angle) * config.guardSpeed;
-            newY += Math.sin(angle) * config.guardSpeed;
-          } else {
-            // Random patrol movement
-            newX += guardian.directionX * config.guardSpeed * 0.5;
-            newY += guardian.directionY * config.guardSpeed * 0.5;
+          // Check for wall collision
+          const corners: [number,number][] = [
+            [potentialX - guardianRadius, potentialY - guardianRadius],
+            [potentialX + guardianRadius, potentialY - guardianRadius],
+            [potentialX - guardianRadius, potentialY + guardianRadius],
+            [potentialX + guardianRadius, potentialY + guardianRadius]
+          ];
+          
+          const willCollide = corners.some(([x, y]) => checkGuardianCollision(x, y));
+          
+          if (willCollide || shouldChangeDirection) {
+            // Pick a new random direction
+            const directions = [
+              { x: 1, y: 0 },   // Right
+              { x: -1, y: 0 },  // Left  
+              { x: 0, y: 1 },   // Down
+              { x: 0, y: -1 },  // Up
+              { x: 1, y: 1 },   // Diagonal down-right
+              { x: -1, y: 1 },  // Diagonal down-left
+              { x: 1, y: -1 },  // Diagonal up-right
+              { x: -1, y: -1 }  // Diagonal up-left
+            ];
+            
+            const validDirections = directions.filter(dir => {
+              const testX = newX + dir.x * patrolSpeed * 3; // Test further ahead
+              const testY = newY + dir.y * patrolSpeed * 3;
+              const testCorners: [number,number][] = [
+                [testX - guardianRadius, testY - guardianRadius],
+                [testX + guardianRadius, testY - guardianRadius],
+                [testX - guardianRadius, testY + guardianRadius],
+                [testX + guardianRadius, testY + guardianRadius]
+              ];
+              return !testCorners.some(([x, y]) => checkGuardianCollision(x, y));
+            });
+            
+            if (validDirections.length > 0) {
+              const newDir = validDirections[Math.floor(Math.random() * validDirections.length)];
+              newDirectionX = newDir.x;
+              newDirectionY = newDir.y;
+              guardian.lastDirectionChange = currentTime;
+            } else {
+              // If no valid directions, try opposite direction
+              newDirectionX = -guardian.directionX;
+              newDirectionY = -guardian.directionY;
+              guardian.lastDirectionChange = currentTime;
+            }
           }
           
-          // Wall collision detection for guardians
-          const checkGuardianCollision = (x: number, y: number) => {
-            const col = Math.floor(x / TILE_SIZE);
-            const row = Math.floor(y / TILE_SIZE);
-            
-            if (row < 0 || row >= MAP_ROWS || col < 0 || col >= MAP_COLS) return true;
-            return currentMap[row] && currentMap[row][col] === 1;
-          };
-
-          const corners = [
+          // Move in current direction
+          newX += newDirectionX * patrolSpeed;
+          newY += newDirectionY * patrolSpeed;
+          angle = Math.atan2(newDirectionY, newDirectionX);
+          
+          // Final collision check - if still colliding, don't move
+          const finalCorners: [number,number][] = [
             [newX - guardianRadius, newY - guardianRadius],
             [newX + guardianRadius, newY - guardianRadius],
             [newX - guardianRadius, newY + guardianRadius],
             [newX + guardianRadius, newY + guardianRadius]
           ];
-
-          // If collision detected, change direction or stay in place
-          if (corners.some(([x, y]) => checkGuardianCollision(x, y))) {
-            if (!isAlert) {
-              // Change direction on wall hit during patrol
-              return {
-                ...guardian,
-                directionX: Math.random() > 0.5 ? 1 : -1,
-                directionY: Math.random() > 0.5 ? 1 : -1,
-                alert: isAlert
-              };
-            }
-            // If chasing and hit wall, don't move but stay alert
-            return { ...guardian, alert: isAlert };
-          }
           
-          return {
-            ...guardian,
-            x: newX,
-            y: newY,
-            alert: isAlert
-          };
-        });
-      });
+          if (finalCorners.some(([x, y]) => checkGuardianCollision(x, y))) {
+            newX = guardian.x;
+            newY = guardian.y;
+            // Force direction change on next update
+            guardian.lastDirectionChange = 0;
+          }
+        }
+
+        // Check if guardian caught player
+        const catchDistance = Math.sqrt((newX - player.x) ** 2 + (newY - player.y) ** 2);
+        if (catchDistance < 30) {
+          // Game over - player caught
+          onGameStateChange('gameOver');
+          if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
+          saveScore(playerName, timeRemaining, difficulty, score, mind);
+          setGameState('idle');
+        }
+
+        return { 
+          ...guardian, 
+          x: newX, 
+          y: newY, 
+          directionX: newDirectionX,
+          directionY: newDirectionY,
+          alert: isAlert, 
+          rotationY: angle 
+        };
+      }));
     }, 100);
-
     return () => clearInterval(guardianInterval);
-  }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig]);
+  }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind]);
 
-  // Initialize game on mount
+  // ---------- Timer (show + callbacks) ----------
   useEffect(() => {
-    if (isActive && gameState === 'idle') {
-      resetGameState(1);
+    if (!isActive || gameState !== 'playing') return;
+    const id = setInterval(() => {
+      setTimeRemaining(prev => {
+        const next = Math.max(0, prev - 1);
+        onTimerUpdate?.(next);
+        if (next === 0) {
+          onTimerActive?.(false);
+          onGameStateChange('gameOver');
+          if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
+          saveScore(playerName, prev, difficulty, score, mind);
+          setGameState('idle');
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isActive, gameState, playerName, difficulty, score, mind, muted, onTimerActive, onTimerUpdate, onGameStateChange]);
+
+  // ---------- Check Victory Condition ----------
+  useEffect(() => {
+    const collectedOrbs = memoryOrbs.filter(orb => orb.collected).length;
+    const totalOrbs = memoryOrbs.length;
+    
+    if (totalOrbs > 0 && collectedOrbs === totalOrbs && gameState === 'playing') {
+      // All orbs collected - victory!
+      onGameStateChange('victory');
+      if (soundsRef.current && !muted) soundsRef.current.victory.play();
+      saveScore(playerName, timeRemaining, difficulty, score, mind);
+      setGameState('idle');
     }
+  }, [memoryOrbs, gameState, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind]);
+
+  // ---------- Init ----------
+  useEffect(() => { 
+    if (isActive && gameState === 'idle') resetGameState(1); 
   }, [isActive, gameState, resetGameState]);
 
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-    1, // Eye level height - on the floor
+    0,
     (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
   ];
 
+  const formatTime = (t: number) => {
+    const m = Math.floor(t / 60).toString().padStart(2, '0');
+    const s = (t % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   return (
-    <div className="w-full h-full bg-background">
+    <div className="w-full h-full bg-background relative">
+      {/* HUD overlay with time + hints */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 text-white text-lg z-10 px-3 py-1 rounded bg-black/40 select-none">
+        ⏱ {formatTime(timeRemaining)} &nbsp;•&nbsp; Shift: Sprint (toggle) &nbsp;•&nbsp; V: {thirdPerson ? 'Third' : 'First'}-person
+      </div>
+      
+      {/* Score display */}
+      <div className="absolute top-3 right-3 text-white text-lg z-10 px-3 py-1 rounded bg-black/40 select-none">
+        Orbs: {memoryOrbs.filter(orb => orb.collected).length}/{memoryOrbs.length}
+      </div>
+      
       <Canvas
         style={{ width: '100%', height: '100%' }}
-        camera={{ 
-          position: playerPosition, 
-          fov: 75,
-          near: 0.1,
-          far: 1000
-        }}
+        camera={{ position: [playerPosition[0], 1.6, playerPosition[2]], fov: 75, near: 0.1, far: 1000 }}
       >
-        {/* First person view - no orbit controls */}
         <GameScene 
           playerPosition={playerPosition}
           memoryOrbs={memoryOrbs}
@@ -767,6 +870,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           playerMovement={playerMovement}
           gameState={gameState}
           gameSettings={gameSettings}
+          thirdPerson={thirdPerson}
+          isSprinting={sprintingRef.current}
         />
       </Canvas>
     </div>
