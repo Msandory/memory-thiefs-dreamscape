@@ -4,7 +4,9 @@ interface MinimapProps {
   mazeLayout: number[][];
   playerPosition: { x: number; y: number };
   orbs: Array<{ x: number; y: number; collected: boolean }>;
-  guardians: Array<{ x: number; y: number; alert: boolean }>;
+  guardians: Array<{ x: number; y: number; alert: boolean; rotationY: number }>;
+  powerUps?: Array<{ x: number; y: number; type: string; collected: boolean }>;
+  playerRotation?: number;
   tileSize: number;
   className?: string;
 }
@@ -14,6 +16,8 @@ export function Minimap({
   playerPosition, 
   orbs, 
   guardians, 
+  powerUps = [],
+  playerRotation = 0,
   tileSize, 
   className = "" 
 }: MinimapProps) {
@@ -83,21 +87,69 @@ export function Minimap({
           );
         })}
         
-        {/* Guardians */}
-        {guardians.map((guardian, index) => {
-          const guardPos = worldToMinimap(guardian.x, guardian.y);
+        {/* Power-ups */}
+        {powerUps.map((powerUp, index) => {
+          if (powerUp.collected) return null;
+          const powerUpPos = worldToMinimap(powerUp.x, powerUp.y);
+          const getColor = (type: string) => {
+            switch (type) {
+              case 'speed': return '#00FF00';
+              case 'immunity': return '#FFD700';
+              case 'thunder': return '#FF6600';
+              case 'timer': return '#00CCFF';
+              default: return '#FFFFFF';
+            }
+          };
           return (
-            <circle
-              key={`guard-${index}`}
-              cx={guardPos.x + cellSize / 2}
-              cy={guardPos.y + cellSize / 2}
-              r={Math.max(2, cellSize / 3)}
-              fill={guardian.alert ? "#E74C3C" : "#F39C12"}
+            <rect
+              key={`powerup-${index}`}
+              x={powerUpPos.x + cellSize / 4}
+              y={powerUpPos.y + cellSize / 4}
+              width={cellSize / 2}
+              height={cellSize / 2}
+              fill={getColor(powerUp.type)}
               stroke="#FFF"
               strokeWidth="1"
             />
           );
         })}
+        
+        {/* Guardians */}
+        {guardians.map((guardian, index) => {
+          const guardPos = worldToMinimap(guardian.x, guardian.y);
+          return (
+            <g key={`guard-${index}`}>
+              <circle
+                cx={guardPos.x + cellSize / 2}
+                cy={guardPos.y + cellSize / 2}
+                r={Math.max(2, cellSize / 3)}
+                fill={guardian.alert ? "#E74C3C" : "#F39C12"}
+                stroke="#FFF"
+                strokeWidth="1"
+              />
+              {/* Guardian direction indicator */}
+              <line
+                x1={guardPos.x + cellSize / 2}
+                y1={guardPos.y + cellSize / 2}
+                x2={guardPos.x + cellSize / 2 + Math.sin(guardian.rotationY) * cellSize / 3}
+                y2={guardPos.y + cellSize / 2 - Math.cos(guardian.rotationY) * cellSize / 3}
+                stroke="#FFF"
+                strokeWidth="1"
+              />
+            </g>
+          );
+        })}
+        
+        {/* Player vision cone */}
+        <path
+          d={`M ${playerMiniPos.x + cellSize / 2} ${playerMiniPos.y + cellSize / 2}
+              L ${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation - Math.PI/6) * cellSize * 2} ${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation - Math.PI/6) * cellSize * 2}
+              A ${cellSize * 2} ${cellSize * 2} 0 0 1 ${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation + Math.PI/6) * cellSize * 2} ${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation + Math.PI/6) * cellSize * 2}
+              Z`}
+          fill="rgba(52, 152, 219, 0.3)"
+          stroke="rgba(52, 152, 219, 0.6)"
+          strokeWidth="1"
+        />
         
         {/* Player */}
         <circle
@@ -109,14 +161,21 @@ export function Minimap({
           strokeWidth="2"
         />
         
-        {/* Player direction indicator */}
+        {/* Player direction indicator (arrow) */}
         <line
           x1={playerMiniPos.x + cellSize / 2}
           y1={playerMiniPos.y + cellSize / 2}
-          x2={playerMiniPos.x + cellSize / 2 + Math.cos(0) * cellSize / 2}
-          y2={playerMiniPos.y + cellSize / 2 + Math.sin(0) * cellSize / 2}
+          x2={playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation) * cellSize / 1.5}
+          y2={playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation) * cellSize / 1.5}
           stroke="#FFF"
-          strokeWidth="1"
+          strokeWidth="2"
+        />
+        {/* Arrowhead */}
+        <polygon
+          points={`${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation) * cellSize / 1.5},${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation) * cellSize / 1.5}
+                   ${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation - 0.5) * cellSize / 2.5},${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation - 0.5) * cellSize / 2.5}
+                   ${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation + 0.5) * cellSize / 2.5},${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation + 0.5) * cellSize / 2.5}`}
+          fill="#FFF"
         />
       </svg>
       
@@ -130,9 +189,13 @@ export function Minimap({
           <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
           <span>Orbs</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 mb-1">
           <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
           <span>Guards</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 bg-green-500"></div>
+          <span>Power-ups</span>
         </div>
       </div>
     </div>

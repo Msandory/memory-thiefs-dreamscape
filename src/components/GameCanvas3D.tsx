@@ -540,7 +540,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       const x = randCol * TILE_SIZE + TILE_SIZE / 2;
       const y = randRow * TILE_SIZE + TILE_SIZE / 2;
       
-      if (currentMap[randRow] && currentMap[randRow][randCol] === 0 && !checkCollisionEnhanced(x, y)) { 
+      // Fix the variable name bug - was using randCol instead of randRow
+      if (currentMap[randRow] && currentMap[randRow][randCol] === 0 && !checkCollisionEnhanced(x, y, 15)) { 
         pos = { x, y }; 
       } 
       attempts++; 
@@ -705,8 +706,10 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     useThunder: () => {},
     getMazeLayout: () => getCurrentRoomLayout(),
     getPlayerPosition: () => ({ x: player.x, y: player.y }),
+    getPlayerRotation: () => cameraRotationRef.current.y,
     getOrbs: () => memoryOrbs,
-    getGuardians: () => guardians
+    getGuardians: () => guardians,
+    getPowerUps: () => powerUps
   }));
 
   // Enhanced keyboard controls with hold-to-sprint
