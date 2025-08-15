@@ -187,7 +187,8 @@ function GameScene({
   gameState,
   gameSettings,
   thirdPerson,
-  isSprinting 
+  isSprinting,
+  cameraRotationRef
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
@@ -199,13 +200,13 @@ function GameScene({
   gameState: 'idle' | 'playing',
   gameSettings: GameSettings,
   thirdPerson: boolean,
-  isSprinting?: boolean
+  isSprinting?: boolean,
+  cameraRotationRef: React.MutableRefObject<{ x: number; y: number }>
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
   const rotationRef = useRef({ x: 0, y: 0 });
   const mouseRef = useRef({ isLocked: false });
-  const cameraRotationRef = useRef({ x: 0, y: 0 });
   // Pointer lock + mouse look
   useEffect(() => {
     const canvas = gl.domElement;
@@ -231,7 +232,7 @@ function GameScene({
     };
   }, [gl, gameSettings]);
 
-  // Auto-eject on pause
+  // Auto-eject mouse on pause, game over, or victory
   useEffect(() => {
     if (gameState !== 'playing') {
       document.exitPointerLock();
@@ -244,7 +245,7 @@ function GameScene({
     const px = playerPosition[0];
     const pz = playerPosition[2];
 
-    // Store camera rotation for movement calculations
+    // Store camera rotation for movement calculations in parent component
     cameraRotationRef.current = rotationRef.current;
 
     if (!thirdPerson) {
@@ -252,7 +253,7 @@ function GameScene({
       camera.position.set(px, eyeHeight, pz);
       camera.rotation.order = 'YXZ';
       camera.rotation.y = rotationRef.current.y;
-      camera.rotation.x = rotationRef.current.x;
+      camera.rotation.x = -rotationRef.current.x; // Fix camera inversion
     } else {
       // Third-person: follow camera behind player
       const distance = 4;
@@ -846,15 +847,6 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
   return (
     <div className="w-full h-full bg-background relative">
-      {/* HUD overlay with time + hints */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 text-white text-lg z-10 px-3 py-1 rounded bg-black/40 select-none">
-        ⏱ {formatTime(timeRemaining)} &nbsp;•&nbsp; Shift: Sprint (toggle) &nbsp;•&nbsp; V: {thirdPerson ? 'Third' : 'First'}-person
-      </div>
-      
-      {/* Score display */}
-      <div className="absolute top-3 right-3 text-white text-lg z-10 px-3 py-1 rounded bg-black/40 select-none">
-        Orbs: {memoryOrbs.filter(orb => orb.collected).length}/{memoryOrbs.length}
-      </div>
       
       <Canvas
         style={{ width: '100%', height: '100%' }}
@@ -872,6 +864,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           gameSettings={gameSettings}
           thirdPerson={thirdPerson}
           isSprinting={sprintingRef.current}
+          cameraRotationRef={cameraRotationRef}
         />
       </Canvas>
     </div>
