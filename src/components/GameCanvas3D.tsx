@@ -928,6 +928,13 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     if (isActive && gameState === 'idle') resetGameState(1); 
   }, [isActive, gameState, resetGameState]);
 
+  // Initialize game when not loading and game is idle
+  useEffect(() => {
+    if (isActive && gameState === 'idle' && !loading) {
+      resetGameState(1);
+    }
+  }, [isActive, gameState, resetGameState, loading]);
+
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
     0,
