@@ -49,7 +49,7 @@ export const MINDS: Record<MindType, MindConfig> = {
 
 export const difficultyConfigs = {
   easy: { 
-    baseTimer: 45, 
+    baseTimer: 165, 
     timerIncrement: 3, 
     baseGuardSpeed: 10, 
     speedIncrement: 0.2, 
