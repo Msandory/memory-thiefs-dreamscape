@@ -6,7 +6,13 @@ export const MAP_COLS = 20;
 export const MAP_ROWS = 15;
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type PowerUpType = 'speed' | 'immunity' | 'thunder' | 'timer';
+export enum PowerUpType {
+  Speed = 'speed',
+  Immunity = 'immunity',
+  Thunder = 'thunder', // Example: clear guardians
+  Timer = 'timer', // Example: add time
+}
+
 export type MindType = 'scholar' | 'artist' | 'detective';
 
 export interface MindConfig {
@@ -49,7 +55,7 @@ export const MINDS: Record<MindType, MindConfig> = {
 
 export const difficultyConfigs = {
   easy: { 
-    baseTimer: 165, 
+    baseTimer: 60, 
     timerIncrement: 3, 
     baseGuardSpeed: 10, 
     speedIncrement: 0.2, 

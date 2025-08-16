@@ -6,7 +6,7 @@ interface MinimapProps {
   orbs: Array<{ x: number; y: number; collected: boolean }>;
   guardians: Array<{ x: number; y: number; alert: boolean; rotationY: number }>;
   powerUps?: Array<{ x: number; y: number; type: string; collected: boolean }>;
-  playerRotation?: number;
+  playerRotation?: number; // This will now receive player.lookRotationY
   tileSize: number;
   className?: string;
 }
@@ -144,7 +144,7 @@ export function Minimap({
         <path
           d={`M ${playerMiniPos.x + cellSize / 2} ${playerMiniPos.y + cellSize / 2}
               L ${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation - Math.PI/6) * cellSize * 2} ${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation - Math.PI/6) * cellSize * 2}
-              A ${cellSize * 2} ${cellSize * 2} 0 0 1 ${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation + Math.PI/6) * cellSize * 2} ${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation + Math.PI/6) * cellSize * 2}
+              A ${cellSize * 2} ${cellSize * 2} 0 0 1 ${playerMiniPos.x + cellSize / 2 + Math.sin(playerRotation + Math.PI/6) * cellSize * 2} ${playerMiniPos.y + cellSize / 2 - Math.cos(playerRotation + Math.PI/6) * cellSize / 2.5}
               Z`}
           fill="rgba(52, 152, 219, 0.3)"
           stroke="rgba(52, 152, 219, 0.6)"
