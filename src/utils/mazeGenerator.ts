@@ -1,4 +1,10 @@
 import { Difficulty, MindType, TILE_SIZE, MAP_COLS, MAP_ROWS } from '../config/gameConfig';
+import brickWallTexture from '@/assets/sprites/brickWallTexture.avif';
+import stoneWallTexture from '@/assets/Texture/stoneWallTexture.jpg';
+import metalWallTexture from '@/assets/Texture/marbleWallTexture.jpg';
+import glassWallTexture from '@/assets/sprites/glassWallTexture.avif';
+import woodWallTexture from '@/assets/sprites/woodWallTexture.avif';
+import marbleWallTexture from '@/assets/sprites/marbleWallTexture.avif';
 
 export interface MazeConfig {
   id: string;
@@ -6,6 +12,7 @@ export interface MazeConfig {
   difficulty: Difficulty;
   mind: MindType;
   layout: number[][];
+  texturePath: string; // Added texturePath
 }
 
 // Helper function to check if all path cells (0s) are connected
@@ -231,15 +238,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
           [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
           [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+        ],
+        texturePath: brickWallTexture,
       },
       {
         id: 'scholar_easy_2',
         name: 'The Study Hall',
         difficulty: 'easy',
         mind: 'scholar',
-        layout: generateMaze(15, 0.6)
-      }
+        layout: generateMaze(15, 0.6),
+        texturePath: brickWallTexture,
+      },
     ],
     medium: [
       {
@@ -263,15 +272,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
           [1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1],
           [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+        ],
+        texturePath: brickWallTexture,
       },
       {
         id: 'scholar_medium_2',
         name: 'The Knowledge Labyrinth',
         difficulty: 'medium',
         mind: 'scholar',
-        layout: generateMaze(25, 0.4)
-      }
+        layout: generateMaze(25, 0.4),
+        texturePath: brickWallTexture,
+      },
     ],
     hard: [
       {
@@ -295,16 +306,18 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
           [1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1],
           [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+        ],
+        texturePath: brickWallTexture,
       },
       {
         id: 'scholar_hard_2',
-        name: 'The Master\'s Vault',
+        name: "The Master's Vault",
         difficulty: 'hard',
         mind: 'scholar',
-        layout: generateMaze(35, 0.3)
-      }
-    ]
+        layout: generateMaze(35, 0.3),
+        texturePath: brickWallTexture,
+      },
+    ],
   },
   artist: {
     easy: [
@@ -313,15 +326,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Paint Studio',
         difficulty: 'easy',
         mind: 'artist',
-        layout: generateMaze(12, 0.7)
+        layout: generateMaze(12, 0.7),
+        texturePath: stoneWallTexture,
       },
       {
-        id: 'artist_easy_2', 
+        id: 'artist_easy_2',
         name: 'The Canvas Room',
         difficulty: 'easy',
         mind: 'artist',
-        layout: generateMaze(14, 0.65)
-      }
+        layout: generateMaze(14, 0.65),
+        texturePath: stoneWallTexture,
+      },
     ],
     medium: [
       {
@@ -329,15 +344,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Gallery Maze',
         difficulty: 'medium',
         mind: 'artist',
-        layout: generateMaze(22, 0.45)
+        layout: generateMaze(22, 0.45),
+        texturePath: stoneWallTexture,
       },
       {
         id: 'artist_medium_2',
         name: 'The Sculpture Garden',
-        difficulty: 'medium', 
+        difficulty: 'medium',
         mind: 'artist',
-        layout: generateMaze(26, 0.4)
-      }
+        layout: generateMaze(26, 0.4),
+        texturePath: stoneWallTexture,
+      },
     ],
     hard: [
       {
@@ -345,16 +362,18 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Creative Chaos',
         difficulty: 'hard',
         mind: 'artist',
-        layout: generateMaze(32, 0.35)
+        layout: generateMaze(32, 0.35),
+        texturePath: stoneWallTexture,
       },
       {
         id: 'artist_hard_2',
         name: 'The Masterpiece Vault',
         difficulty: 'hard',
         mind: 'artist',
-        layout: generateMaze(38, 0.25)
-      }
-    ]
+        layout: generateMaze(38, 0.25),
+        texturePath: stoneWallTexture,
+      },
+    ],
   },
   detective: {
     easy: [
@@ -363,15 +382,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Case Files',
         difficulty: 'easy',
         mind: 'detective',
-        layout: generateMaze(13, 0.68)
+        layout: generateMaze(13, 0.68),
+        texturePath: metalWallTexture,
       },
       {
         id: 'detective_easy_2',
         name: 'The Evidence Room',
         difficulty: 'easy',
-        mind: 'detective', 
-        layout: generateMaze(15, 0.62)
-      }
+        mind: 'detective',
+        layout: generateMaze(15, 0.62),
+        texturePath: metalWallTexture,
+      },
     ],
     medium: [
       {
@@ -379,37 +400,99 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Investigation Hub',
         difficulty: 'medium',
         mind: 'detective',
-        layout: generateMaze(24, 0.42)
+        layout: generateMaze(24, 0.42),
+        texturePath: metalWallTexture,
       },
       {
         id: 'detective_medium_2',
         name: 'The Crime Scene',
         difficulty: 'medium',
         mind: 'detective',
-        layout: generateMaze(27, 0.38)
-      }
+        layout: generateMaze(27, 0.38),
+        texturePath: metalWallTexture,
+      },
     ],
     hard: [
       {
-        id: 'detective_hard_1', 
+        id: 'detective_hard_1',
         name: 'The Cold Case Vault',
         difficulty: 'hard',
         mind: 'detective',
-        layout: generateMaze(34, 0.32)
+        layout: generateMaze(34, 0.32),
+        texturePath: metalWallTexture,
       },
       {
         id: 'detective_hard_2',
-        name: 'The Sherlock\'s Mind',
+        name: "The Sherlock's Mind",
         difficulty: 'hard',
         mind: 'detective',
-        layout: generateMaze(40, 0.28)
-      }
-    ]
-  }
+        layout: generateMaze(40, 0.28),
+        texturePath: metalWallTexture,
+      },
+    ],
+  },
 };
+  // Add mystic mind to match gameConfig
+ {/* mystic: {
+    easy: [
+      {
+        id: 'mystic_easy_1',
+        name: 'The Ethereal Shrine',
+        difficulty: 'easy',
+        mind: 'mystic',
+        layout: generateMaze(12, 0.7),
+        texturePath: glassWallTexture,
+      },
+      {
+        id: 'mystic_easy_2',
+        name: 'The Spirit Chamber',
+        difficulty: 'easy',
+        mind: 'mystic',
+        layout: generateMaze(14, 0.65),
+        texturePath: glassWallTexture,
+      },
+    ],
+    medium: [
+      {
+        id: 'mystic_medium_1',
+        name: 'The Astral Maze',
+        difficulty: 'medium',
+        mind: 'mystic',
+        layout: generateMaze(22, 0.45),
+        texturePath: glassWallTexture,
+      },
+      {
+        id: 'mystic_medium_2',
+        name: 'The Oracle’s Path',
+        difficulty: 'medium',
+        mind: 'mystic',
+        layout: generateMaze(26, 0.4),
+        texturePath: glassWallTexture,
+      },
+    ],
+    hard: [
+      {
+        id: 'mystic_hard_1',
+        name: 'The Celestial Vault',
+        difficulty: 'hard',
+        mind: 'mystic',
+        layout: generateMaze(32, 0.35),
+        texturePath: glassWallTexture,
+      },
+      {
+        id: 'mystic_hard_2',
+        name: 'The Eternal Sanctum',
+        difficulty: 'hard',
+        mind: 'mystic',
+        layout: generateMaze(38, 0.25),
+        texturePath: glassWallTexture,
+      },
+    ],
+  },
+};*/}
 
 export function getMazes(mind: MindType, difficulty: Difficulty): MazeConfig[] {
-  return MAZE_TEMPLATES[mind][difficulty];
+  return MAZE_TEMPLATES[mind][difficulty] || [];
 }
 
 export function getMaze(mazeId: string): MazeConfig | null {

@@ -7,7 +7,7 @@ import { Difficulty, MindType, MINDS } from '@/config/gameConfig';
 import { getMazes, MazeConfig } from '@/utils/mazeGenerator';
 
 interface MainMenuProps {
-  onStartGame: (name: string, difficulty: Difficulty, mind: MindType, mazeId: string) => void;
+  onStartGame: (name: string, difficulty: Difficulty, mind: MindType, mazeId: string, texturePath: string) => void; // Updated to include texturePath
   onShowInstructions: () => void;
   muted: boolean;
   savedPlayerName: string;
@@ -70,7 +70,9 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
 
   const handleMazeSelect = (mazeId: string) => {
     playClickSound();
-    onStartGame(playerName.trim(), difficulty, selectedMind, mazeId);
+    const selectedMaze = availableMazes.find(maze => maze.id === mazeId);
+    const texturePath = selectedMaze?.texturePath || MINDS[selectedMind].texturePath; // Use maze texture if available, else mind texture
+    onStartGame(playerName.trim(), difficulty, selectedMind, mazeId, texturePath);
   };
 
   const handleChangeName = () => {

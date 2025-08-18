@@ -1,6 +1,9 @@
 // Game Configuration
 import { ChallengeState } from '../utils/miniChallenges';
-
+import brickWallTexture from '@/assets/Texture/brickWallTexture.avif';
+import stoneWallTexture from '@/assets/Texture/stoneWallTexture.jpg';
+import metalWallTexture from '@/assets/Texture/marbleWallTexture.jpg';
+import glassWallTexture from '@/assets/Texture/glassWallTexture.webp';
 export const TILE_SIZE = 100;
 export const MAP_COLS = 20;
 export const MAP_ROWS = 15;
@@ -20,6 +23,7 @@ export interface MindConfig {
   description: string;
   theme: string;
   color: string;
+  texturePath: string; // Path to the wall texture
 }
 
 export interface MiniChallenge {
@@ -34,25 +38,29 @@ export interface MiniChallenge {
 
 export const MINDS: Record<MindType, MindConfig> = {
   scholar: {
-    name: "Scholar's Library",
-    description: "Navigate through ancient halls of knowledge",
+    name: 'Scholar',
+    description: 'Navigate the labyrinth of knowledge with precision.',
+  
+    texturePath: brickWallTexture,
     theme: "Academic halls with floating books and scrolls",
     color: "hsl(210, 100%, 70%)"
   },
   artist: {
-    name: "Artist's Studio", 
-    description: "Steal memories from a creative sanctuary",
+    name: 'Artist',
+    description: 'Weave through the chaos of creativity.',
+    texturePath: stoneWallTexture,
     theme: "Paint-splattered rooms with floating canvases",
     color: "hsl(300, 100%, 70%)"
   },
-  detective: {
-    name: "Detective's Office",
-    description: "Infiltrate a mind of logic and deduction", 
+  detective: { // Changed from warrior to detective to match mazeGenerator.ts
+    name: 'Detective',
+    description: 'Uncover clues in the maze of mystery.',
+    texturePath: metalWallTexture,
     theme: "Noir-style rooms with case files and evidence",
     color: "hsl(45, 100%, 70%)"
-  }
+  },
+ 
 };
-
 export const difficultyConfigs = {
   easy: { 
     baseTimer: 60, 
@@ -62,7 +70,7 @@ export const difficultyConfigs = {
     initialGuards: 1, 
     guardsPerLevel: 0.5, 
     powerUpChance: 0.8,
-    maxLevels: 5 // Example: Limit levels
+   
   },
   medium: { 
     baseTimer: 35, 
@@ -72,7 +80,7 @@ export const difficultyConfigs = {
     initialGuards: 1, 
     guardsPerLevel: 1, 
     powerUpChance: 0.6,
-    maxLevels: 10 // Example: Limit levels
+   
   },
   hard: { 
     baseTimer: 30, 
@@ -82,7 +90,7 @@ export const difficultyConfigs = {
     initialGuards: 2, 
     guardsPerLevel: 1, 
     powerUpChance: 0.8,
-    maxLevels: 15 // Example: Limit levels
+   
   },
 };
 
@@ -91,7 +99,7 @@ export const commonConfig = {
   initialOrbs: 2,
   orbsPerLevel: 0.5,
   safeDistance: 100,
-  guardianVisionRange: 100,
+  guardianVisionRange: 150,
   guardianVisionAngle: Math.PI / 3,
   powerUpStartLevel: 4,
   orbRadius: 30,

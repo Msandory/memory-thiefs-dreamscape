@@ -49,6 +49,7 @@ interface GameCanvasProps {
   onSettingsChange: (settings: GameSettings) => void;
   onPlayerPositionUpdate?: (x: number, y: number) => void;
   onPlayerLookRotationUpdate?: (rotationY: number) => void;
+  texturePath: string;
 }
 
 interface Guardian { 
@@ -62,8 +63,8 @@ interface Guardian {
   stuckCounter: number;
 }
 
-function Wall({ position }: { position: [number, number, number] }) {
-  const texture = useTexture(brickWallTexture);
+function Wall({ position,texturePath }: { position: [number, number, number] , texturePath: string }) {
+  const texture = useTexture(texturePath);
   useEffect(() => {
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(1, 1);
@@ -238,7 +239,8 @@ function GameScene({
   gameSettings,
   thirdPerson,
   isSprinting,
-  cameraRotationRef 
+  cameraRotationRef,
+  texturePath
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
@@ -253,7 +255,8 @@ function GameScene({
   gameSettings: GameSettings,
   thirdPerson: boolean,
   isSprinting?: boolean,
-  cameraRotationRef: React.MutableRefObject<{ x: number; y: number }> 
+  cameraRotationRef: React.MutableRefObject<{ x: number; y: number }> ,
+  texturePath: string
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
@@ -394,7 +397,7 @@ function GameScene({
       if (mazeLayout[row] && mazeLayout[row][col] === 1) {
         const x = (col - MAP_COLS / 2) * 2;
         const z = (row - MAP_ROWS / 2) * 2;
-        walls.push(<Wall key={`wall-${row}-${col}`} position={[x, 2, z]} />);
+        walls.push(<Wall key={`wall-${row}-${col}`} position={[x, 2, z]} texturePath={texturePath} />)
       }
     }
   }
@@ -490,7 +493,7 @@ async function saveScore(playerName: string, time: number, difficulty: Difficult
 // ---------------- Main Component with Fixed Movement ----------------
 export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate, gameSettings, onSettingsChange,
-  onPlayerPositionUpdate, onPlayerLookRotationUpdate, 
+  onPlayerPositionUpdate, onPlayerLookRotationUpdate, texturePath 
 }, ref) => {
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
   const [currentLevel, setCurrentLevel] = useState(1);
@@ -643,78 +646,122 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     return () => { if (soundsRef.current) Object.values(soundsRef.current).forEach(sound => sound.unload()); }; 
   }, []);
 
-  const resetGameState = useCallback((level: number = 1) => { 
-    setIsSpawningComplete(false); // Reset spawning state
-    setActivePowerUps([]); 
-    const config = getLevelConfig(level); 
-    
-    // Track spawned positions to ensure minimum safe distance
-    const spawnedPositions: {x: number, y: number}[] = [];
-    const minSpawnDistance = commonConfig.safeDistance || 100;
+const resetGameState = useCallback(async (level: number = 1) => { 
+  setIsLoading(true); // START LOADING HERE - at the beginning of spawning
+  setIsSpawningComplete(false); // Reset spawning state
+  setActivePowerUps([]); 
+  const config = getLevelConfig(level); 
+  
+  // Track spawned positions to ensure minimum safe distance
+  const spawnedPositions: {x: number, y: number}[] = [];
+  const minSpawnDistance = commonConfig.safeDistance || 100;
 
-    const getUniqueSafePosition = () => {
-      let newPos;
-      let attempts = 0;
-      do {
-        newPos = getRandomSafePosition();
-        attempts++;
-        if (attempts > 200) { // Prevent infinite loop for very small maps
-          console.warn("Could not find a unique safe position for an item after many attempts.");
-          break;
-        }
-      } while (spawnedPositions.some(p => {
-        const dx = newPos.x - p.x; 
-        const dy = newPos.y - p.y; 
-        return Math.sqrt(dx*dx + dy*dy) < minSpawnDistance;
-      }));
-      spawnedPositions.push(newPos);
-      return newPos;
-    };
+  const getUniqueSafePosition = () => {
+    let newPos;
+    let attempts = 0;
+    do {
+      newPos = getRandomSafePosition();
+      attempts++;
+      if (attempts > 200) { // Prevent infinite loop for very small maps
+        console.log("Could not find a unique safe position for an item after many attempts.");
+        break;
+      }
+      // Add a small delay every 10 attempts to show loading progress
+     
+    } while (spawnedPositions.some(p => {
+      const dx = newPos.x - p.x; 
+      const dy = newPos.y - p.y; 
+      return Math.sqrt(dx*dx + dy*dy) < minSpawnDistance;
+    }));
+    spawnedPositions.push(newPos);
+    return newPos;
+  };
 
-    const newPlayerPos = getUniqueSafePosition();
-    setPlayer({ ...newPlayerPos, size: 20, rotationY: 0, lookRotationY: 0 }); 
+  // Spawn player with loading feedback
+  console.log("Spawning player...");
+  const newPlayerPos = await getUniqueSafePosition();
+  setPlayer({ ...newPlayerPos, size: 20, rotationY: 0, lookRotationY: 0 }); 
 
-    const newOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[] = []; 
-    for (let i = 0; i < config.orbs; i++) { 
-      newOrbs.push({ ...getUniqueSafePosition(), collected: false, pulse: Math.random() * Math.PI * 2, collectingTime: 0 }); 
-    } 
-    setMemoryOrbs(newOrbs); 
+  // Spawn orbs with loading feedback
+  console.log("Spawning memory orbs...");
+  const newOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[] = []; 
+  for (let i = 0; i < config.orbs; i++) { 
+    console.log(`Spawning orb ${i + 1}/${config.orbs}...`);
+    const orbPos = await getUniqueSafePosition();
+    newOrbs.push({ ...orbPos, collected: false, pulse: Math.random() * Math.PI * 2, collectingTime: 0 }); 
+  } 
+  setMemoryOrbs(newOrbs); 
 
-    const newGuardians: Guardian[] = []; 
-    for (let i = 0; i < config.guards; i++) { 
-      newGuardians.push({ 
-        ...getUniqueSafePosition(), 
-        directionX: Math.random() > 0.5 ? 1 : -1, 
-        directionY: Math.random() > 0.5 ? 1 : -1, 
-        alert: false, 
-        rotationY: 0,
-        lastDirectionChange: Date.now(),
-        stuckCounter: 0
-      }); 
-    } 
-    setGuardians(newGuardians); 
+  // Spawn guardians with loading feedback
+  console.log("Spawning guardians...");
+  const newGuardians: Guardian[] = []; 
+  for (let i = 0; i < config.guards; i++) { 
+    console.log(`Spawning guardian ${i + 1}/${config.guards}...`);
+    const guardianPos = await getUniqueSafePosition();
+    newGuardians.push({ 
+      ...guardianPos, 
+      directionX: Math.random() > 0.5 ? 1 : -1, 
+      directionY: Math.random() > 0.5 ? 1 : -1, 
+      alert: false, 
+      rotationY: 0,
+      lastDirectionChange: Date.now(),
+      stuckCounter: 0
+    }); 
+  } 
+  setGuardians(newGuardians); 
 
-    // NEW: Spawn Power-ups
-    const newPowerUps: SpawnedPowerUp[] = [];
-    if (Math.random() < config.powerUpChance) { // Chance to spawn a power-up
-      const powerUpTypes = Object.values(PowerUpType);
-      const randomType = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
-      newPowerUps.push({ ...getUniqueSafePosition(), type: randomType, collected: false });
+  // Spawn power-ups with loading feedback
+  console.log("Spawning power-ups...");
+  const newPowerUps: SpawnedPowerUp[] = [];
+  if (Math.random() < config.powerUpChance) {
+    const powerUpTypes = Object.values(PowerUpType);
+    const randomType = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+    const powerUpPos = await getUniqueSafePosition();
+    newPowerUps.push({ ...powerUpPos, type: randomType, collected: false });
+  }
+  setPowerUps(newPowerUps);
+
+  // Finish setup
+  timerStarted.current = true; 
+  const t = config.timer;
+  setTimeRemaining(t); 
+  onTimerUpdate?.(t);
+  onTimerActive?.(true);
+  setCurrentLevel(level); 
+  onLevelChange?.(level);
+  setGameState('playing'); 
+  onGameStateChange('playing'); 
+  
+  // Small delay to ensure everything is rendered, then hide loader
+  setTimeout(() => {
+    setIsSpawningComplete(true);
+    setIsLoading(false); // END LOADING HERE - after everything is spawned
+    console.log("Level spawning complete!");
+  }, 500);
+}, [getLevelConfig, getRandomSafePosition, onGameStateChange, onTimerActive, onTimerUpdate, onLevelChange, commonConfig.safeDistance]);
+
+// And update the victory condition logic to NOT set loading there:
+useEffect(() => {
+  const collectedOrbs = memoryOrbs.filter(orb => orb.collected).length;
+  const totalOrbs = memoryOrbs.length;
+  
+  if (totalOrbs > 0 && collectedOrbs === totalOrbs && gameState === 'playing' && isSpawningComplete) {
+    if (currentLevel < commonConfig.MAX_LEVELS) {               
+      // DON'T setIsLoading(true) here - let resetGameState handle it
+      setTimeout(() => {
+        const nextLevel = currentLevel + 1;
+        setCurrentLevel(nextLevel);
+        onLevelChange?.(nextLevel);
+        resetGameState(nextLevel); // This will handle the loading state
+      }, 2000); // Reduced delay since loading will show during resetGameState
+    } else {
+      onGameStateChange('victory');
+      if (soundsRef.current && !muted) soundsRef.current.victory.play();
+      saveScore(playerName, timeRemaining, difficulty, score, mind);
+      setGameState('idle'); 
     }
-    setPowerUps(newPowerUps);
-
-    timerStarted.current = true; 
-    const t = config.timer;
-    setTimeRemaining(t); 
-    onTimerUpdate?.(t);
-    onTimerActive?.(true);
-    setCurrentLevel(level); 
-    onLevelChange?.(level); // Notify parent about level change
-    setGameState('playing'); 
-    onGameStateChange('playing'); 
-    setIsSpawningComplete(true); // Mark spawning as complete
-  }, [getLevelConfig, getRandomSafePosition, onGameStateChange, onTimerActive, onTimerUpdate, onLevelChange, commonConfig.safeDistance]);
-
+  }
+}, [memoryOrbs, gameState, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, currentLevel, onLevelChange, resetGameState, isSpawningComplete]);
   useImperativeHandle(ref, () => ({
     reset: () => resetGameState(1),
     retry: () => { const newLevel = Math.max(1, currentLevel - 1); resetGameState(newLevel); },
@@ -1058,14 +1105,14 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     
     if (totalOrbs > 0 && collectedOrbs === totalOrbs && gameState === 'playing' &&isSpawningComplete ) {
       if (currentLevel < commonConfig.MAX_LEVELS) {               
-        setIsLoading(true); // Show loader
+        
         setTimeout(() => {
           const nextLevel = currentLevel + 1;
           setCurrentLevel(nextLevel);
           onLevelChange?.(nextLevel);
           resetGameState(nextLevel);
          
-          setIsLoading(false);
+          
         }, 7000); // 7-second delay
         
         
@@ -1116,6 +1163,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           thirdPerson={thirdPerson}
           isSprinting={sprintingRef.current}
           cameraRotationRef={cameraRotationRef} 
+          texturePath={texturePath} 
         />
       </Canvas>
       
