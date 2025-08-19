@@ -203,7 +203,7 @@ const Index = () => {
   const handleTimerUpdate = useCallback((time: number) => setTimeRemaining(time), []);
   const handleTimerActive = useCallback((isActive: boolean) => setTimerActive(isActive), []);
   const handleLevelChange = useCallback((level: number) => setCurrentLevel(level), []);
-
+  const [isThirdPerson, setIsThirdPerson] = useState(true); 
 
 
   // NEW: Callback to trigger useThunder from GameCanvas
@@ -225,7 +225,7 @@ const Index = () => {
       
       {(gameState === 'playing' || gameState === 'paused' || gameState === 'gameOver' || gameState === 'victory') && (
         <div className="w-full h-full flex items-center justify-center p-1 sm:p-4">
-          <div className="relative aspect-[4/3] w-full max-w-5xl max-h-full">
+          <div className="relative w-full h-screen max-w-none">
             <GameCanvas3D
               ref={gameCanvasRef}
               isActive={gameState === 'playing'}
@@ -245,8 +245,9 @@ const Index = () => {
               onScoreUpdate={setScore}
               gameSettings={gameSettings}
               onSettingsChange={setGameSettings}
-             
               texturePath={selectedTexturePath}
+              thirdPerson={isThirdPerson} // Pass current thirdPerson state
+              onToggleThirdPerson={setIsThirdPerson} // Pass the setter for 'V' key toggle
             />
             <GameHUD
               memoriesCollected={memoriesCollected}
@@ -262,7 +263,7 @@ const Index = () => {
               currentLevel={currentLevel}
               totalMemories={2 + (currentLevel - 1)}
             />
-            <MinimapContainer gameCanvasRef={gameCanvasRef} tileSize={100} />
+            <MinimapContainer gameCanvasRef={gameCanvasRef} isThirdPerson={isThirdPerson}   />
           
             {gameState === 'paused' && (
               <PauseMenu 

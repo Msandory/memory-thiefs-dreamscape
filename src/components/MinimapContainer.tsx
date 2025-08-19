@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Minimap } from './Minimap';
+import { TILE_SIZE } from '../config/gameConfig'; // Import TILE_SIZE from gameConfig for passing
 
 interface MinimapContainerProps {
   gameCanvasRef: React.RefObject<any>;
-  tileSize?: number;
+  isThirdPerson: boolean; // Add this prop to pass through from parent GameCanvas3D
 }
 
-export function MinimapContainer({ gameCanvasRef, tileSize = 100 }: MinimapContainerProps) {
+export function MinimapContainer({ gameCanvasRef, isThirdPerson }: MinimapContainerProps) {
   const [mapData, setMapData] = useState<{
     mazeLayout?: number[][];
     playerPosition?: { x: number; y: number };
     orbs?: Array<{ x: number; y: number; collected: boolean }>;
     guardians?: Array<{ x: number; y: number; alert: boolean; rotationY: number }>;
     powerUps?: Array<{ x: number; y: number; type: string; collected: boolean }>;
-    playerRotation?: number;
+    playerLookRotation?: number; // Renamed to accurately reflect the data
   }>({});
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export function MinimapContainer({ gameCanvasRef, tileSize = 100 }: MinimapConta
           orbs: gameCanvasRef.current.getOrbs?.(),
           guardians: gameCanvasRef.current.getGuardians?.(),
           powerUps: gameCanvasRef.current.getPowerUps?.(),
-          playerRotation: gameCanvasRef.current.getPlayerRotation?.()
+          playerLookRotation: gameCanvasRef.current.getPlayerLookRotation?.() // Use the correct imperative handle name
         });
       }
     }, 100); // Update 10 times per second
@@ -34,7 +35,7 @@ export function MinimapContainer({ gameCanvasRef, tileSize = 100 }: MinimapConta
   }, [gameCanvasRef]);
 
   if (!mapData.mazeLayout || !mapData.playerPosition || !mapData.orbs || !mapData.guardians) {
-    return null;
+    return null; // Don't render minimap until all necessary data is loaded
   }
 
   return (
@@ -45,8 +46,9 @@ export function MinimapContainer({ gameCanvasRef, tileSize = 100 }: MinimapConta
         orbs={mapData.orbs}
         guardians={mapData.guardians}
         powerUps={mapData.powerUps}
-        playerRotation={mapData.playerRotation}
-        tileSize={tileSize}
+        playerRotation={mapData.playerLookRotation} // Pass the player's look rotation
+        isThirdPerson={isThirdPerson} // Pass isThirdPerson to Minimap
+        // tileSize={TILE_SIZE} // Pass TILE_SIZE directly from gameConfig (globally available for convenience)
         className=""
       />
     </div>

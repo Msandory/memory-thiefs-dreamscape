@@ -4,6 +4,7 @@ import brickWallTexture from '@/assets/Texture/brickWallTexture.avif';
 import stoneWallTexture from '@/assets/Texture/stoneWallTexture.jpg';
 import metalWallTexture from '@/assets/Texture/marbleWallTexture.jpg';
 import glassWallTexture from '@/assets/Texture/glassWallTexture.webp';
+
 export const TILE_SIZE = 100;
 export const MAP_COLS = 20;
 export const MAP_ROWS = 15;
@@ -52,7 +53,7 @@ export const MINDS: Record<MindType, MindConfig> = {
     theme: "Paint-splattered rooms with floating canvases",
     color: "hsl(300, 100%, 70%)"
   },
-  detective: { // Changed from warrior to detective to match mazeGenerator.ts
+  detective: { 
     name: 'Detective',
     description: 'Uncover clues in the maze of mystery.',
     texturePath: metalWallTexture,
@@ -99,14 +100,23 @@ export const commonConfig = {
   initialOrbs: 2,
   orbsPerLevel: 0.5,
   safeDistance: 100,
-  guardianVisionRange: 150,
-  guardianVisionAngle: Math.PI / 3,
-  powerUpStartLevel: 4,
-  orbRadius: 30,
-  guardianRadius: 40,
-  playerRadius: 20, 
-  guardianAlertRadius: 300, 
-  guardianAlertSpeedMultiplier: 2.5, 
+  guardianVisionRange: 200, // Distance (in game units) guards can 'see' for the minimap cone
+  guardianVisionAngle: 90, // Degrees: FOV for vision cone on minimap
+  powerUpStartLevel: 1,
+  orbRadius: 20, // Collision radius for memory orbs (game units)
+  guardianRadius: 5, // Collision radius for guardians (game units) - adjusted!
+  playerRadius: 5, // Collision radius for player (game units) - adjusted!
+  guardianAlertRadius: 120, // Actual radius for guard's player detection in GameCanvas3D
+  guardianAlertSpeedMultiplier: 1.5, 
+  playerBaseSpeed: 3,
+  playerSprintMultiplier: 1.5, 
+  max_stuck_attempts: 15, 
+  powerUpEffects: {
+    speedBoostMultiplier: 1.5, 
+    timerBoost: 30, 
+    timerScoreBonus: 50,
+    otherPowerUpScoreBonus: 20,
+  }
 };
 
 export const MINI_CHALLENGES: MiniChallenge[] = [
