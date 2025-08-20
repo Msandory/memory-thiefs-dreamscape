@@ -57,12 +57,13 @@ interface GameCanvasProps {
 interface Guardian { 
   x: number; 
   y: number; 
-  directionX: number; 
-  directionY: number; 
+  // Removed directionX, directionY as rotationY will handle movement direction
   alert: boolean; 
-  rotationY: number;
+  rotationY: number; // This will define heading for movement and visual orientation
   lastDirectionChange: number;
   stuckCounter: number;
+  // New properties for patrol logic
+  patrolTimer: number; // When to consider changing direction
 }
 
 function Wall({ position, texturePath }: { position: [number, number, number], texturePath: string }) {
@@ -151,8 +152,12 @@ function GuardianModel({ position, alert, rotationY }: { position: [number, numb
   const { actions } = useAnimations(animations, scene);
   const currentAction = useRef<THREE.AnimationAction | null>(null);
 
-  const modelCorrectionOffset = -Math.PI / 2; 
-  const finalModelRotationY = rotationY; // Default, if your model correctly aligns with Math.atan2(dx, dy) 
+  // Note: The model's default forward might not align with +Y (0 rotation) in game coords.
+  // If the model looks "right" (positive X) when rotationY is 0, an offset like -Math.PI / 2 might be needed.
+  // Based on current game movement (sin for X, cos for Y, 0 angle is +Y), and assuming the model
+  // points along +Y when its rotationY is 0, then the rotationY from `atan2(dx, dy)` should align.
+  const finalModelRotationY = rotationY; 
+
   useEffect(() => {
     const walkAction = actions['Walking'] || actions['Walk'];
     const runAction = actions['Running'] || actions['Run'];
@@ -381,6 +386,10 @@ function GameScene({
     }
   }
 
+  // Calculate scaled radius for Three.js scene from game units
+  const playerSceneRadius = commonConfig.playerRadius / TILE_SIZE * 2;
+  const guardianSceneRadius = commonConfig.guardianRadius / TILE_SIZE * 2;
+
   return (
     <group ref={groupRef}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
@@ -395,6 +404,12 @@ function GameScene({
         isMoving={playerMovement.isMoving}
         rotationY={cameraRotationRef.current.y}
       />
+      {/* Player Collision Radius Visual */}
+      <mesh position={[playerPosition[0], 0.01, playerPosition[2]]}>
+        <cylinderGeometry args={[playerSceneRadius, playerSceneRadius, 0.02, 32]} />
+        <meshBasicMaterial color="white" transparent opacity={0.3} />
+      </mesh>
+
       {memoryOrbs.map((orb, index) => (
         <MemoryOrb
           key={`orb-${index}`}
@@ -422,16 +437,26 @@ function GameScene({
         />
       ))}
       {guardians.map((guardian, index) => (
-        <GuardianModel
-          key={`guardian-${index}`}
-          position={[
-            (guardian.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-            0,
-            (guardian.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
-          ]}
-          alert={guardian.alert}
-          rotationY={guardian.rotationY}
-        />
+        <group key={`guard-group-${index}`}> {/* Group guardian model and its radius */}
+          <GuardianModel
+            position={[
+              (guardian.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
+              0,
+              (guardian.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
+            ]}
+            alert={guardian.alert}
+            rotationY={guardian.rotationY}
+          />
+          {/* Guardian Collision Radius Visual */}
+          <mesh position={[
+              (guardian.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
+              0.01,
+              (guardian.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
+          ]}>
+            <cylinderGeometry args={[guardianSceneRadius, guardianSceneRadius, 0.02, 32]} />
+            <meshBasicMaterial color="white" transparent opacity={0.3} />
+          </mesh>
+        </group>
       ))}
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1} />
@@ -457,9 +482,10 @@ async function saveScore(playerName: string, time: number, difficulty: Difficult
 }
 
 export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
-  isActive, onGameStateChange, onMemoryCollected, playerName, onPlayerNameLoaded, muted, onTimerUpdate, onTimerActive, onLevelChange, mobileDirection = { up: false, down: false, left: false, right: false }, difficulty, mind, mazeId, onScoreUpdate, gameSettings, onSettingsChange,
+  isActive, onGameStateChange, onMemoryCollected, playerName, muted, onTimerUpdate, onTimerActive, onLevelChange, difficulty, mind, mazeId, onScoreUpdate, gameSettings, 
   onPlayerPositionUpdate, onPlayerLookRotationUpdate, texturePath, thirdPerson, onToggleThirdPerson,
 }, ref) => {
+  const [, forceRender] = useState(0);
   const [gameState, setGameState] = useState<'idle' | 'playing'>('idle');
   const [currentLevel, setCurrentLevel] = useState(1);
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -471,7 +497,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   const sprintingRef = useRef(false);
   const keysPressed = useRef({ w: false, a: false, s: false, d: false, shift: false });
   const [memoryOrbs, setMemoryOrbs] = useState<{ x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[]>([]);
-  const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const guardians = useRef<Guardian[]>([]); // This is the ref object
   const [powerUps, setPowerUps] = useState<SpawnedPowerUp[]>([]);
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
   const [currentMazeLayout, setCurrentMazeLayout] = useState<number[][]>([]);
@@ -506,6 +532,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   const checkCollision = useCallback((x: number, y: number, radius: number = 15) => {
     const currentMap = getCurrentRoomLayout();
     
+    // Check corners and midpoints of the bounding box around the entity
     const checkPoints = [
       [x - radius, y - radius],
       [x + radius, y - radius],
@@ -516,7 +543,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       [x - radius, y], // Center left
       [x + radius, y], // Center right
     ];
-    const steps = 3;
+    // Add more granular checks along the edges
+    const steps = 3; // Number of steps along each edge
     for (let i = 0; i <= steps; i++) {
         const frac = i / steps;
         checkPoints.push([x - radius + 2 * radius * frac, y - radius]); // Top edge
@@ -532,7 +560,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         return true; // Out of bounds is a collision
       }
       
-      return currentMap[row] && currentMap[row][col] === 1;// Collision with a wall
+      return currentMap[row] && currentMap[row][col] === 1; // Collision with a wall
     });
   }, [getCurrentRoomLayout]);
 
@@ -540,7 +568,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     const currentMap = getCurrentRoomLayout(); 
     let pos: {x:number;y:number}|undefined; 
     let attempts = 0; 
-    const minSpawnDistance = commonConfig.safeDistance || 100;
+    const minSpawnDistance = commonConfig.safeDistance || 100; // Use commonConfig.safeDistance
     do { 
       const randCol = Math.floor(Math.random() * MAP_COLS); 
       const randRow = Math.floor(Math.random() * MAP_ROWS); 
@@ -551,9 +579,9 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         pos = { x, y }; 
       }
       attempts++; 
-    } while (!pos && attempts < 200); 
-    return pos || { x: TILE_SIZE * 1.5, y: TILE_SIZE * 1.5 };
-  }, [getCurrentRoomLayout, checkCollision]);
+    } while (!pos && attempts < 200); // Limit attempts to prevent infinite loops on very dense mazes
+    return pos || { x: TILE_SIZE * 1.5, y: TILE_SIZE * 1.5 }; // Fallback to a fixed position if no safe spot found
+  }, [getCurrentRoomLayout, checkCollision, commonConfig.playerRadius]);
 
   const handleOrbClick = useCallback((orbIndex: number) => {
     const orb = memoryOrbs[orbIndex];
@@ -577,7 +605,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       setTimeout(() => setRoomShift(prev => ({ ...prev, intensity: 0 })), 300);
       if (soundsRef.current && !muted) soundsRef.current.orbCollect.play();
     }
-  }, [memoryOrbs, player, score, muted, onMemoryCollected, onScoreUpdate, commonConfig.playerRadius, TILE_SIZE]);
+  }, [memoryOrbs, player, score, muted, onScoreUpdate, commonConfig.playerRadius, TILE_SIZE]); // Removed onMemoryCollected as it's not used directly here
 
   const handlePowerUpClick = useCallback((powerUpIndex: number) => {
     const pUp = powerUps[powerUpIndex];
@@ -598,7 +626,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         setTimeRemaining(prev => prev + commonConfig.powerUpEffects.timerBoost);
         newScore += commonConfig.powerUpEffects.timerScoreBonus;
       } else {
-        const duration =  10;
+        const duration =  10; // Default duration for non-timer power-ups
         setActivePowerUps(prev => [
           ...prev,
           { type: pUp.type, duration: duration, maxDuration: duration }
@@ -623,6 +651,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     }; 
     return () => { if (soundsRef.current) Object.values(soundsRef.current).forEach(sound => sound.unload()); }; 
   }, []);
+
   // Background Music Playback Control
   useEffect(() => {
     if (soundsRef.current) {
@@ -652,6 +681,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       do {
         newPos = getRandomSafePosition();
         attempts++;
+        // If a position cannot be found after many attempts, break to prevent infinite loop
         if (attempts > 300) {
           console.log("Could not find a unique safe position for an item after many attempts.");
           break;
@@ -685,15 +715,14 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       const guardianPos = await getUniqueSafePosition();
       newGuardians.push({ 
         ...guardianPos, 
-        directionX: Math.random() > 0.5 ? 1 : -1, 
-        directionY: Math.random() > 0.5 ? 1 : -1, 
         alert: false, 
-        rotationY: 0,
+        rotationY: Math.random() * Math.PI * 2, // Random initial direction (0 to 2PI)
         lastDirectionChange: Date.now(),
-        stuckCounter: 0
+        stuckCounter: 0,
+        patrolTimer: Date.now() + commonConfig.patrolDirectionChangeInterval + Math.random() * commonConfig.patrolDirectionChangeRandomOffset
       }); 
     } 
-    setGuardians(newGuardians); 
+    guardians.current = newGuardians; // Update the ref's current value
 
     console.log("Spawning power-ups...");
     const newPowerUps: SpawnedPowerUp[] = [];
@@ -720,12 +749,13 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       setIsLoading(false);
       console.log("Level spawning complete!");
     }, 500);
-  }, [getLevelConfig, getRandomSafePosition, onGameStateChange, onTimerActive, onTimerUpdate, onLevelChange, commonConfig.safeDistance]);
+  }, [getLevelConfig, getRandomSafePosition, onGameStateChange, onTimerActive, onTimerUpdate, onLevelChange, commonConfig.safeDistance, commonConfig.patrolDirectionChangeInterval, commonConfig.patrolDirectionChangeRandomOffset]);
 
   useEffect(() => {
     const collectedOrbs = memoryOrbs.filter(orb => orb.collected).length;
     const totalOrbs = memoryOrbs.length;
     
+    // Only trigger victory/next level if there are orbs and all are collected, and game is playing and spawning is complete
     if (totalOrbs > 0 && collectedOrbs === totalOrbs && gameState === 'playing' && isSpawningComplete) {
       if (currentLevel < commonConfig.MAX_LEVELS) {               
         setTimeout(() => {
@@ -733,12 +763,13 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           setCurrentLevel(nextLevel);
           onLevelChange?.(nextLevel);
           resetGameState(nextLevel);
-        }, 2000);
+        }, 2000); // Wait 2 seconds before loading next level
       } else {
+        // Game victory!
         onGameStateChange('victory');
         if (soundsRef.current && !muted) soundsRef.current.victory.play();
         saveScore(playerName, timeRemaining, difficulty, score, mind);
-        setGameState('idle'); 
+        setGameState('idle'); // Stop game updates
       }
     }
   }, [memoryOrbs, gameState, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, currentLevel, onLevelChange, resetGameState, isSpawningComplete]);
@@ -747,17 +778,39 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     reset: () => resetGameState(1),
     retry: () => { const newLevel = Math.max(1, currentLevel - 1); resetGameState(newLevel); },
     useThunder: () => {
-        const thunderIndex = activePowerUps.findIndex(p => p.type === PowerUpType.Thunder);
-        if (thunderIndex !== -1) {
-          setGuardians([]); // Clear all guardians when thunder is used
-          setActivePowerUps(prev => prev.filter((_, i) => i !== thunderIndex));
-          console.log("⚡ Thunder activated!");
+      // START: Updated Thunder Power-Up Logic (from user's request)
+      const thunderIndex = activePowerUps.findIndex(p => p.type === PowerUpType.Thunder);
+      if (thunderIndex !== -1) {
+        // Find closest guardian to player
+        let closestIndex = -1;
+        let closestDistance = Infinity;
+        
+        guardians.current.forEach((guardian, index) => {
+          const dx = player.x - guardian.x;
+          const dy = player.y - guardian.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = index;
+          }
+        });
+        
+        // Remove closest guardian if found
+        if (closestIndex !== -1) {
+          guardians.current.splice(closestIndex, 1);
+          forceRender(prev => prev + 1); // IMPORTANT: Force re-render after modifying ref array
         }
-      },
+        
+        setActivePowerUps(prev => prev.filter((_, i) => i !== thunderIndex));
+        console.log("⚡ Thunder activated!");
+      }
+      // END: Updated Thunder Power-Up Logic
+    },
     getMazeLayout: () => getCurrentRoomLayout(),
     getPlayerPosition: () => ({ x: player.x, y: player.y }),
     getOrbs: () => memoryOrbs,
-    getGuardians: () => guardians,
+    getGuardians: () => guardians.current, // FIX: Return the array stored in the ref's current property
     getPowerUps: () => powerUps,
     getPlayerLookRotation: () => player.lookRotationY 
   }));
@@ -777,14 +830,36 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       if (key === 'v') {
         onToggleThirdPerson(!thirdPerson); // Toggle the value
       }
-      if (key === ' ') {
-        // directly trigger thunder from inside component
+      if (key === ' ') { // Spacebar for Thunder power-up
+        // START: Updated Thunder Power-Up Logic (from user's request)
         const thunderIndex = activePowerUps.findIndex(p => p.type === PowerUpType.Thunder);
         if (thunderIndex !== -1) {
-          setGuardians([]); // Clear all guardians
+          // Find closest guardian to player
+          let closestIndex = -1;
+          let closestDistance = Infinity;
+          
+          guardians.current.forEach((guardian, index) => {
+            const dx = player.x - guardian.x;
+            const dy = player.y - guardian.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < closestDistance) {
+              closestDistance = distance;
+              closestIndex = index;
+            }
+          });
+          
+          // Remove closest guardian if found
+          if (closestIndex !== -1) {
+            guardians.current.splice(closestIndex, 1);
+            forceRender(prev => prev + 1); // IMPORTANT: Force re-render after modifying ref array
+          }
+          
           setActivePowerUps(prev => prev.filter((_, i) => i !== thunderIndex));
           console.log("⚡ Thunder activated!");
-        }}
+        }
+        // END: Updated Thunder Power-Up Logic
+      }
       if (key === 'escape') {
         onGameStateChange('paused');
         document.exitPointerLock();
@@ -805,7 +880,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isActive, gameState, onGameStateChange,thirdPerson, onToggleThirdPerson]);
+  }, [isActive, gameState, onGameStateChange, thirdPerson, onToggleThirdPerson, activePowerUps, player.x, player.y]); // Added player.x, player.y to dependencies for thunder logic in handleKeyDown
 
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
@@ -850,29 +925,44 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           let deltaZ = 0; 
           const playerRadius = commonConfig.playerRadius || 15; // Default radius if not defined
           
+          // REVERTED PLAYER MOVEMENT LOGIC TO THE PREVIOUSLY WORKING ONE
+          // Three.js cameraYaw (Y-rotation): 0 is -Z (world), PI/2 is -X (world)
+          // Game coords: X (cols) is +X (world), Y (rows) is +Z (world)
+          // To map cameraYaw to a game world direction vector:
+          // A vector pointing in the direction of cameraYaw (in Three.js XZ plane)
+          // X = sin(cameraYaw), Z = cos(cameraYaw)
+          // For a standard FPS forward (W), we want to move *against* camera's Z.
+          // For game world, this means X = -sin(cameraYaw), Y = -cos(cameraYaw)
           const forward = { x: -Math.sin(cameraYaw), z: -Math.cos(cameraYaw) };
-          const right = { x: Math.cos(cameraYaw), z: -Math.sin(cameraYaw) };
+          // Right vector is 90 deg clockwise from forward. Rotate (forward.x, forward.z) by -PI/2.
+          // newX = oldX * cos(angle) - oldY * sin(angle)
+          // newY = oldX * sin(angle) + oldY * cos(angle)
+          // Right X = forward.x * cos(-PI/2) - forward.z * sin(-PI/2) = forward.x * 0 - forward.z * (-1) = forward.z
+          // Right Z = forward.x * sin(-PI/2) + forward.z * cos(-PI/2) = forward.x * (-1) + forward.z * 0 = -forward.x
+          const right = { x: forward.z, z: -forward.x }; 
           
           if (thirdPerson) {
-            // Inverted controls for third-person view
-            if (keys.s) { // S moves forward
+            // In third-person, S moves *forward* (towards where character is facing, which aligns with cameraYaw)
+            // W moves *backward*
+            // A strafes *left*, D strafes *right*
+            if (keys.s) { // Move forward relative to camera
               deltaX += forward.x * speed;
               deltaZ += forward.z * speed;
             }
-            if (keys.w) { // W moves backward
+            if (keys.w) { // Move backward relative to camera
               deltaX -= forward.x * speed;
               deltaZ -= forward.z * speed;
             }
-            if (keys.d) { // D moves left
-              deltaX -= right.x * speed;
-              deltaZ -= right.z * speed;
-            }
-            if (keys.a) { // A moves right
+            if (keys.d) { // Strafe right relative to camera
               deltaX += right.x * speed;
               deltaZ += right.z * speed;
             }
+            if (keys.a) { // Strafe left relative to camera
+              deltaX -= right.x * speed;
+              deltaZ -= right.z * speed;
+            }
           } else {
-            // Normal controls for first-person view
+            // First-person controls: WASD relative to camera view
             if (keys.w) { 
               deltaX += forward.x * speed;
               deltaZ += forward.z * speed;
@@ -918,183 +1008,191 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         return updatedPlayer;
       });
   
+      // Orb collection detection
       memoryOrbs.forEach((orb, index) => {
         if (!orb.collected) {
           const dx = player.x - orb.x;
           const dy = player.y - orb.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          if (distance < 40) {
+          if (distance < commonConfig.playerRadius + (TILE_SIZE / 4)) {
             handleOrbClick(index);
           }
         }
       });
 
+      // Power-up collection detection
       powerUps.forEach((pUp, index) => {
         if (!pUp.collected) {
           const dx = player.x - pUp.x;
           const dy = player.y - pUp.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          if (distance < 40) {
+          if (distance < commonConfig.playerRadius + (TILE_SIZE / 4)) {
             handlePowerUpClick(index);
           }
         }
       });
 
-    }, 16);
+    }, 16); // ~60 FPS
     return () => clearInterval(moveInterval);
-  }, [isActive, gameState, memoryOrbs, powerUps, player, handleOrbClick, handlePowerUpClick, checkCollision, cameraRotationRef, onPlayerPositionUpdate, onPlayerLookRotationUpdate, thirdPerson]); 
+  }, [isActive, gameState, memoryOrbs, powerUps, player, handleOrbClick, handlePowerUpClick, checkCollision, cameraRotationRef, onPlayerPositionUpdate, onPlayerLookRotationUpdate, thirdPerson, activePowerUps, muted, commonConfig, TILE_SIZE]); 
 
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     const guardianInterval = setInterval(() => {
-      const currentMap = getCurrentRoomLayout();
       const config = getLevelConfig(currentLevel);
       const currentTime = Date.now();
       
-      setGuardians(prevGuardians => prevGuardians.map(guardian => {
+      // Helper function to attempt a move and check collision
+      const attemptMove = (currentX: number, currentY: number, angle: number, speed: number, radius: number): { x: number; y: number; moved: boolean } => {
+          // In our game coordinate system: 0 angle is +Y, PI/2 is +X.
+          // So x-movement is sin(angle) and y-movement is cos(angle).
+          const moveX = Math.sin(angle) * speed; 
+          const moveY = Math.cos(angle) * speed; 
+
+          const newX = currentX + moveX;
+          const newY = currentY + moveY;
+
+          if (!checkCollision(newX, newY, radius)) {
+              return { x: newX, y: newY, moved: true };
+          }
+          return { x: currentX, y: currentY, moved: false };
+      };
+
+      guardians.current.forEach((guardian, index) => {
         const dx = player.x - guardian.x;
         const dy = player.y - guardian.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const isAlert = distance < commonConfig.guardianAlertRadius;
+       
+        guardian.alert = isAlert; // Update alert state for rendering
 
-        let newX = guardian.x;
-        let newY = guardian.y;
+        let currentAngle = guardian.rotationY;
         const guardianRadius = commonConfig.guardianRadius;
-        let newDirectionX = guardian.directionX;
-        let newDirectionY = guardian.directionY;
-        let angle = guardian.rotationY;
-        let stuckCounter = guardian.stuckCounter;
+        let speed = 0;
+        let movedThisTick = false;
 
         if (isAlert) {
-          const chaseSpeed = config.guardSpeed * 1.5;
-          angle = Math.atan2(dx, dy); 
-          
-          const chaseX = Math.cos(angle) * chaseSpeed;
-          const chaseY = Math.sin(angle) * chaseSpeed;
-          
-          if (!checkCollision(newX + chaseX, newY + chaseY, guardianRadius)) {
-            newX += chaseX;
-            newY += chaseY;
-            stuckCounter = 0;
-          } else {
-            const alternatives = [
-              { x: Math.sin(angle + Math.PI/6) * chaseSpeed, y: Math.cos(angle + Math.PI/6) * chaseSpeed },
-              { x: Math.sin(angle - Math.PI/6) * chaseSpeed, y: Math.cos(angle - Math.PI/6) * chaseSpeed },
-              { x: Math.sin(angle + Math.PI/2) * chaseSpeed * 0.5, y: Math.cos(angle + Math.PI/2) * chaseSpeed * 0.5 },
-              { x: Math.sin(angle - Math.PI/2) * chaseSpeed * 0.5, y: Math.cos(angle - Math.PI/2) * chaseSpeed * 0.5 }
-            ];
+            // Chase Mode
+            speed = config.guardSpeed * commonConfig.guardianAlertSpeedMultiplier;
+            const targetAngle = Math.atan2(dx, dy); // Angle from guardian to player
             
-            let moved = false;
-            for (const alt of alternatives) {
-              if (!checkCollision(newX + alt.x, newY + alt.y, guardianRadius)) {
-                newX += alt.x;
-                newY += alt.y;
-                angle = Math.atan2(alt.x, alt.y);
-                moved = true;
-                stuckCounter = 0;
-                break;
-              }
-            }
+            // Gradually turn towards the player for smoother chasing
+            const angleDifference = targetAngle - currentAngle;
+            let normalizedAngleDiff = Math.atan2(Math.sin(angleDifference), Math.cos(angleDifference));
+            const maxTurnSpeed = 0.05; // Max radians per tick for turning
+            currentAngle += Math.min(Math.max(normalizedAngleDiff, -maxTurnSpeed), maxTurnSpeed);
             
-            if (!moved) {
-              stuckCounter++;
-            }
-          }
-        } else {
-          const patrolSpeed = config.guardSpeed * 0.6;
-          
-          const timeSinceLastChange = currentTime - guardian.lastDirectionChange;
-          const shouldChangeDirection = stuckCounter > 2 || timeSinceLastChange > 2500 + Math.random() * 2000;
-          
-          const potentialX = newX + newDirectionX * patrolSpeed;
-          const potentialY = newY + newDirectionY * patrolSpeed;
-          
-          const willCollide = checkCollision(potentialX, potentialY, guardianRadius);
-          
-          if (willCollide || shouldChangeDirection) {
-            const directions = [
-              { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }, // Cardinal
-              { x: 0.707, y: 0.707 }, { x: -0.707, y: 0.707 }, { x: 0.707, y: -0.707 }, { x: -0.707, y: -0.707 } // Diagonal
-            ];
-            const validDirections = directions.filter(dir => {
-              const testX = newX + dir.x * patrolSpeed * 3;
-              const testY = newY + dir.y * patrolSpeed * 3;
-              return !checkCollision(testX, testY, guardianRadius);
-            });
-            
-            if (validDirections.length > 0) {
-              const newDir = validDirections[Math.floor(Math.random() * validDirections.length)];
-              newDirectionX = newDir.x;
-              newDirectionY = newDir.y;
-              guardian.lastDirectionChange = currentTime;
-              stuckCounter = 0;
+            // Try moving in the new current angle
+            const moveAttempt = attemptMove(guardian.x, guardian.y, currentAngle, speed, guardianRadius);
+
+            if (moveAttempt.moved) {
+                guardian.x = moveAttempt.x;
+                guardian.y = moveAttempt.y;
+                guardian.stuckCounter = Math.max(0, guardian.stuckCounter - 1); // Reduce if moving
+                movedThisTick = true;
             } else {
-              const diagonalDirections = [
-                  { x: 0.7, y: 0.7 }, { x: -0.7, y: 0.7 }, { x: 0.7, y: -0.7 }, { x: -0.7, y: -0.7 }
-              ].filter(dir => {
-                  const testX = newX + dir.x * patrolSpeed * 3;
-                  const testY = newY + dir.y * patrolSpeed * 3;
-                  return !checkCollision(testX, testY, guardianRadius);
-              });
-              if(diagonalDirections.length > 0) {
-                  const newDir = diagonalDirections[Math.floor(Math.random() * diagonalDirections.length)];
-                  newDirectionX = newDir.x;
-                  newDirectionY = newDir.y;
-                  guardian.lastDirectionChange = currentTime;
-                  stuckCounter = 0;
-              } else {
-                  newDirectionX = -guardian.directionX;
-                  newDirectionY = -guardian.directionY;
-                  guardian.lastDirectionChange = currentTime;
-                  stuckCounter++;
-              }
+                // If current path blocked, try steering angles
+                guardian.stuckCounter++;
+                let foundPath = false;
+                // Angles to try for steering around obstacles (relative to current heading)
+                const steeringAngles = [0.2, -0.2, 0.4, -0.4, Math.PI / 2, -Math.PI / 2]; 
+                for (const adj of steeringAngles) {
+                    const testSteeringAngle = currentAngle + adj;
+                    const steeringMoveAttempt = attemptMove(guardian.x, guardian.y, testSteeringAngle, speed, guardianRadius);
+                    if (steeringMoveAttempt.moved) {
+                        guardian.x = steeringMoveAttempt.x;
+                        guardian.y = steeringMoveAttempt.y;
+                        currentAngle = testSteeringAngle; // Adopt the steering angle
+                        guardian.stuckCounter = Math.max(0, guardian.stuckCounter - 1); 
+                        movedThisTick = true;
+                        foundPath = true;
+                        break;
+                    }
+                }
             }
-          }
-          
-          const moveX = newDirectionX * patrolSpeed;
-          const moveY = newDirectionY * patrolSpeed;
-          
-          if (!checkCollision(newX + moveX, newY + moveY, guardianRadius)) {
-            newX += moveX;
-            newY += moveY;
-            angle = Math.atan2(newDirectionX, newDirectionY);
-            stuckCounter = Math.max(0, stuckCounter - 1);
-          } else {
-            stuckCounter++;
-          }
-        }
+        } else {
+            // Patrol Mode
+            speed = config.guardSpeed * 0.6; // Patrol speed
 
-        if (stuckCounter > 5) {
-          console.warn(`Guardian ${JSON.stringify(guardian)} stuck, teleporting.`);
+            // Check if it's time to change direction
+            const shouldChangeDirection = currentTime >= guardian.patrolTimer;
+
+            // Attempt to move in current direction
+            const patrolMoveAttempt = attemptMove(guardian.x, guardian.y, currentAngle, speed, guardianRadius);
+            
+            if (patrolMoveAttempt.moved) {
+                guardian.x = patrolMoveAttempt.x;
+                guardian.y = patrolMoveAttempt.y;
+                guardian.stuckCounter = Math.max(0, guardian.stuckCounter - 1); // Reduce if moving
+                movedThisTick = true;
+            } else {
+                // Hit a wall while patrolling, force a turn
+                guardian.stuckCounter++;
+                let newAngleFound = false;
+                // Try turning 90 degrees left, right, or reversing
+                const turnOptions = [Math.PI / 2, -Math.PI / 2, Math.PI]; 
+                for (const turn of turnOptions) {
+                    const testTurnAngle = currentAngle + turn;
+                    // Check if turning and moving a bit further (e.g. 2x radius) would be clear
+                    const testMoveAfterTurn = attemptMove(guardian.x, guardian.y, testTurnAngle, speed * 2, guardianRadius);
+                    if (testMoveAfterTurn.moved) {
+                        currentAngle = testTurnAngle;
+                        guardian.lastDirectionChange = currentTime;
+                        guardian.patrolTimer = currentTime + commonConfig.patrolDirectionChangeInterval + Math.random() * commonConfig.patrolDirectionChangeRandomOffset;
+                        newAngleFound = true;
+                        break;
+                    }
+                }
+                if (!newAngleFound) {
+                    // As a last resort, pick a completely random direction if unable to turn
+                    currentAngle = Math.random() * Math.PI * 2;
+                    guardian.lastDirectionChange = currentTime;
+                    guardian.patrolTimer = currentTime + commonConfig.patrolDirectionChangeInterval + Math.random() * commonConfig.patrolDirectionChangeRandomOffset;
+                }
+            }
+            
+            // Also change direction if patrol timer expires, even if not stuck
+            if (shouldChangeDirection && !movedThisTick) { 
+                currentAngle = Math.random() * Math.PI * 2; // Pick a random new direction
+                guardian.lastDirectionChange = currentTime;
+                guardian.patrolTimer = currentTime + commonConfig.patrolDirectionChangeInterval + Math.random() * commonConfig.patrolDirectionChangeRandomOffset;
+                guardian.stuckCounter = 0; // Reset stuck counter on planned direction change
+            }
+        }
+       
+        // Update guardian's visual rotation
+        guardian.rotationY = currentAngle;
+
+        // Teleport if guardian is truly stuck for too long
+        if (guardian.stuckCounter > commonConfig.max_stuck_attempts) { 
+          console.warn(`Guardian ${index} stuck (counter: ${guardian.stuckCounter}), teleporting.`);
           const safePos = getRandomSafePosition();
-          newX = safePos.x;
-          newY = safePos.y;
-          stuckCounter = 0;
+          guardian.x = safePos.x;
+          guardian.y = safePos.y;
+          guardian.stuckCounter = 0;
           guardian.lastDirectionChange = currentTime;
+          guardian.patrolTimer = currentTime + commonConfig.patrolDirectionChangeInterval + Math.random() * commonConfig.patrolDirectionChangeRandomOffset; // Reset patrol timer too
+          guardian.rotationY = Math.random() * Math.PI * 2; // Random new direction after teleport
         }
-
-        const catchDistance = Math.sqrt((newX - player.x) ** 2 + (newY - player.y) ** 2);
-        if (catchDistance < 30) {
+       
+        // Check for player catch (game over condition)
+        const catchDistance = Math.sqrt((guardian.x - player.x) ** 2 + (guardian.y - player.y) ** 2);
+        const immunityActive = activePowerUps.some(p => p.type === PowerUpType.Immunity && p.duration > 0);
+        if (catchDistance < commonConfig.playerRadius + commonConfig.guardianRadius && !immunityActive) {
           onGameStateChange('gameOver');
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, timeRemaining, difficulty, score, mind);
+          setGameState('idle'); // Ensure game state is set to idle to stop further updates
+          clearInterval(guardianInterval); // Stop the interval immediately to prevent multiple game over triggers
         }
-
-        return { 
-          ...guardian, 
-          x: newX, 
-          y: newY, 
-          directionX: newDirectionX,
-          directionY: newDirectionY,
-          alert: isAlert, 
-          rotationY: angle,
-          stuckCounter
-        };
-      }));
-    }, 100);
+       });
+       // Force component to re-render to update guardian positions and alert states
+       forceRender(prev => prev + 1);
+    }, 50); // Increased update frequency for smoother guardian movement
     return () => clearInterval(guardianInterval);
-  }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, checkCollision, getRandomSafePosition]);
+  }, [isActive, gameState, player, currentLevel, getLevelConfig, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, checkCollision, getRandomSafePosition, activePowerUps, commonConfig]); // Added commonConfig to dependencies
 
+  // Timer useEffect
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     const id = setInterval(() => {
@@ -1106,6 +1204,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           onGameStateChange('gameOver');
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, prev, difficulty, score, mind);
+          setGameState('idle'); // Ensure game state is set to idle to stop further updates
+          clearInterval(id); // Stop the interval immediately
         }
         return next;
       });
@@ -1113,35 +1213,30 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     return () => clearInterval(id);
   }, [isActive, gameState, playerName, difficulty, score, mind, muted, onTimerActive, onTimerUpdate, onGameStateChange]);
 
+  // Power-up duration management
   useEffect(() => {
-    const collectedOrbs = memoryOrbs.filter(orb => orb.collected).length;
-    const totalOrbs = memoryOrbs.length;
-    
-    if (totalOrbs > 0 && collectedOrbs === totalOrbs && gameState === 'playing' && isSpawningComplete) {
-      if (currentLevel < commonConfig.MAX_LEVELS) {               
-        setTimeout(() => {
-          const nextLevel = currentLevel + 1;
-          setCurrentLevel(nextLevel);
-          onLevelChange?.(nextLevel);
-          resetGameState(nextLevel);
-        }, 7000);
-      } else {
-        onGameStateChange('victory');
-        if (soundsRef.current && !muted) soundsRef.current.victory.play();
-        saveScore(playerName, timeRemaining, difficulty, score, mind);
-        setGameState('idle'); 
-      }
-    }
-  }, [memoryOrbs, gameState, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, currentLevel, onLevelChange, resetGameState, isSpawningComplete]);
+    if (!isActive || gameState !== 'playing' || activePowerUps.length === 0) return;
+
+    const powerUpTimer = setInterval(() => {
+      setActivePowerUps(prev => prev.map(p => ({
+        ...p,
+        duration: p.duration - 1 // Decrease duration by 1 second
+      })).filter(p => p.duration > 0)); // Remove expired power-ups
+    }, 1000);
+
+    return () => clearInterval(powerUpTimer);
+  }, [isActive, gameState, activePowerUps]);
+
 
   useEffect(() => { 
     if (isActive && gameState === 'idle') resetGameState(1); 
   }, [isActive, gameState, resetGameState]);
 
+  // Adjust player position for Three.js scene coordinates
   const playerPosition: [number, number, number] = [
     (player.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
-    0,
-    (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
+    0, // Y-component (height)
+    (player.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2 // Z-component (depth)
   ];
 
   return (
@@ -1160,7 +1255,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         <GameScene 
           playerPosition={playerPosition}
           memoryOrbs={memoryOrbs}
-          guardians={guardians}
+          guardians={guardians.current} // Pass the array from the ref
           powerUps={powerUps}
           onOrbClick={handleOrbClick}
           onPowerUpClick={handlePowerUpClick}
@@ -1183,6 +1278,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         <div>Mouse: Look Around</div>
         <div>Click: Lock Mouse</div>
         <div>ESC: Pause</div>
+        <div>Space: Use Thunder Power-Up</div> {/* Added instruction */}
         <div className="mt-2 text-xs border-t border-gray-600 pt-2">
           <div className="text-yellow-300">Mode: {thirdPerson ? 'Third Person' : 'First Person'}</div>
           <div className="text-blue-300">Sprint: {sprintingRef.current ? 'Active' : 'Ready'}</div>
@@ -1190,17 +1286,18 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         </div>
       </div>
       {activePowerUps.length > 0 && (
-  <div className="absolute top-4 centre-4 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm">
-    <div className="font-bold mb-2 text-yellow-400">⚡ Active PowerUps</div>
-    {activePowerUps.map((p, i) => (
-      <div key={i} className="flex justify-between">
-        <span>{p.type}</span>
-        <span>{Math.ceil(p.duration)}s</span>
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm">
+      <div className="font-bold mb-2 text-yellow-400">⚡ Active PowerUps</div>
+      {activePowerUps.map((p, i) => (
+        <div key={i} className="flex justify-between">
+          <span>{p.type}</span>
+          <span>{Math.ceil(p.duration)}s</span>
+        </div>
+      ))}
       </div>
-    ))}
-  </div>
 )}
     </div>
+    
   );
 });
 

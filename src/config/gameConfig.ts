@@ -106,11 +106,13 @@ export const commonConfig = {
   orbRadius: 20, // Collision radius for memory orbs (game units)
   guardianRadius: 5, // Collision radius for guardians (game units) - adjusted!
   playerRadius: 5, // Collision radius for player (game units) - adjusted!
-  guardianAlertRadius: 120, // Actual radius for guard's player detection in GameCanvas3D
+  guardianAlertRadius: 50, // Actual radius for guard's player detection in GameCanvas3D
   guardianAlertSpeedMultiplier: 1.5, 
   playerBaseSpeed: 3,
   playerSprintMultiplier: 1.5, 
-  max_stuck_attempts: 15, 
+  max_stuck_attempts: 10, // Changed from 15 to 10 for faster recovery
+  patrolDirectionChangeInterval: 2500, // Base time (ms) before considering a patrol direction change
+  patrolDirectionChangeRandomOffset: 2000, // Random additional time (ms) for patrol direction change
   powerUpEffects: {
     speedBoostMultiplier: 1.5, 
     timerBoost: 30, 

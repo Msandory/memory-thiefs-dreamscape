@@ -56,14 +56,15 @@ export function Minimap({
   const playerMiniPos = worldToMinimap(playerPosition.x, playerPosition.y);
   
   // Player & Guardian Rotation Logic:
-  // - GameCanvas3D Player: playerRotation (`cameraRotationRef.current.y`)
-  //   - Assumed: `playerRotation = 0` implies facing World `-Z` (logical "North").
-  // - GameCanvas3D Guardian: `guardian.rotationY` (from `Math.atan2(dx, dy)`)
-  //   - Assumed: `guardian.rotationY = 0` implies facing Game `+Y` (logical "South", World `+Z`).
-  // - Minimap drawing logic: `sin(angle)*len` for X, `-cos(angle)*len` for Y (results in `angle=0` pointing UP, "North").
-
-  // Player's Minimap Rotation: If playerRotation = 0 is North (-Z), and Minimap's 0 is North (Up), then it's direct.
-  const finalPlayerRotationOnMinimap = playerRotation; 
+  // Our game world Y+ is Three.js Z+. Minimap North is Y- (up).
+  //
+  // Player: `playerRotation` comes from Three.js `cameraRotationRef.current.y`.
+  // If `playerRotation = 0` means camera faces World `-Z` (logical "North").
+  // Minimap drawing uses `sin(angle)` for X and `-cos(angle)` for Y, so `angle=0` points UP (Minimap North).
+  // Thus, if `playerRotation=0` is 3D North and minimap `0` is Minimap North, they align.
+  // BUT, if it appears 180 degrees off, then `playerRotation` from Three.js might need a PI offset
+  // to correctly orient with a "North is Up" minimap. This is a common adjustment.
+  const finalPlayerRotationOnMinimap = playerRotation + Math.PI; // Added Math.PI offset here for player
 
   return (
     <div className={`relative bg-black/80 border border-white/20 rounded-lg overflow-hidden ${className}`} 
@@ -148,12 +149,13 @@ export function Minimap({
         })}
         
         {/* Draw Guardians and their vision cones */}
-        {guardians.map((guardian, index) => {
+        {guardians && guardians.map((guardian, index) => {
           const guardMiniPos = worldToMinimap(guardian.x, guardian.y);
           const centerX = guardMiniPos.x;
           const centerY = guardMiniPos.y;
           
-          // Apply +Math.PI offset: guardian.rotationY=0 (facing +Z/South) -> minimap +PI (Down/South)
+          // Apply +Math.PI offset: guardian.rotationY=0 (facing +Y/South in game) -> minimap +PI (Down/South)
+          // Since Minimap's 0 is North, and guardian.rotationY=0 is South, we add PI. This is already correct.
           const minimapGuardRotation = guardian.rotationY + Math.PI; 
           
           const startAngle = minimapGuardRotation - visionConeAngleRad / 2;
