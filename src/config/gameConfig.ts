@@ -66,7 +66,7 @@ export const difficultyConfigs = {
   easy: { 
     baseTimer: 60, 
     timerIncrement: 3, 
-    baseGuardSpeed: 10, 
+    baseGuardSpeed: 5, 
     speedIncrement: 0.2, 
     initialGuards: 1, 
     guardsPerLevel: 0.5, 
@@ -100,19 +100,19 @@ export const commonConfig = {
   initialOrbs: 2,
   orbsPerLevel: 0.5,
   safeDistance: 100,
-  guardianVisionRange: 200, // Distance (in game units) guards can 'see' for the minimap cone
-  guardianVisionAngle: 90, // Degrees: FOV for vision cone on minimap
+  guardianVisionRange: 190, // Distance (in game units) guards can 'see' for the minimap cone
+  guardianVisionAngle: 190, // Dwegrees: FOV for vision cone on minimap
   powerUpStartLevel: 1,
   orbRadius: 20, // Collision radius for memory orbs (game units)
-  guardianRadius: 5, // Collision radius for guardians (game units) - adjusted!
-  playerRadius: 5, // Collision radius for player (game units) - adjusted!
-  guardianAlertRadius: 50, // Actual radius for guard's player detection in GameCanvas3D
+  guardianRadius: 25, // Collision radius for guardians (game units) - adjusted!
+  playerRadius: 25, // Collision radius for player (game units) - adjusted!
+  guardianAlertRadius: 150, // Actual radius for guard's player detection in GameCanvas3D
   guardianAlertSpeedMultiplier: 1.5, 
-  playerBaseSpeed: 3,
+  playerBaseSpeed: 8, // Base speed for player movement in game units
   playerSprintMultiplier: 1.5, 
   max_stuck_attempts: 10, // Changed from 15 to 10 for faster recovery
   patrolDirectionChangeInterval: 2500, // Base time (ms) before considering a patrol direction change
-  patrolDirectionChangeRandomOffset: 2000, // Random additional time (ms) for patrol direction change
+  patrolDirectionChangeRandomOffset: 10, // Random additional time (ms) for patrol direction change
   powerUpEffects: {
     speedBoostMultiplier: 1.5, 
     timerBoost: 30, 

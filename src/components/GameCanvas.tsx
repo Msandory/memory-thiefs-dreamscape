@@ -743,7 +743,7 @@ export const GameCanvas = forwardRef<any, GameCanvasProps>(({
         activePowerUps.current.forEach(powerUp => {
           const color = getPowerUpGlowColor(powerUp.type);
           ctx.fillStyle = color;
-          ctx.fillText(`${powerUp.type.toUpperCase()}: ${Math.ceil(powerUp.duration)}s`, textCenterX, yOffset);
+          ctx.fillText(`${powerUp.type}: ${Math.ceil(powerUp.duration)}s`, textCenterX, yOffset);
           yOffset += lineHeight;
         });
         if (thunderCharges.current > 0) {

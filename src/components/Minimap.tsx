@@ -61,10 +61,8 @@ export function Minimap({
   // Player: `playerRotation` comes from Three.js `cameraRotationRef.current.y`.
   // If `playerRotation = 0` means camera faces World `-Z` (logical "North").
   // Minimap drawing uses `sin(angle)` for X and `-cos(angle)` for Y, so `angle=0` points UP (Minimap North).
-  // Thus, if `playerRotation=0` is 3D North and minimap `0` is Minimap North, they align.
-  // BUT, if it appears 180 degrees off, then `playerRotation` from Three.js might need a PI offset
-  // to correctly orient with a "North is Up" minimap. This is a common adjustment.
-  const finalPlayerRotationOnMinimap = playerRotation + Math.PI; // Added Math.PI offset here for player
+  // To correct 180-degree flip (if 3D North appears South on minimap), add PI.
+  const finalPlayerRotationOnMinimap = playerRotation + Math.PI; 
 
   return (
     <div className={`relative bg-black/80 border border-white/20 rounded-lg overflow-hidden ${className}`} 
