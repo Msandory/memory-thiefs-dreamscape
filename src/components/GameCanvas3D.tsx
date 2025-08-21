@@ -28,6 +28,7 @@ import {
 } from '@/config/gameConfig';
 import { getMaze } from '@/utils/mazeGenerator';
 import { GLTF,SkeletonUtils  } from 'three-stdlib'; 
+import Loader from "./Loader";
 
 interface ActivePowerUp { type: PowerUpType; duration: number; maxDuration: number; }
 interface SpawnedPowerUp { x: number; y: number; type: PowerUpType; collected: boolean; }
@@ -245,7 +246,7 @@ function GuardianModel({ position, alert, rotationY, guardianIndex  }: { positio
         <meshBasicMaterial color={alert ? "#ff0000" : "#ffff00"} transparent opacity={0.3} />
       </mesh>
       {/* Add a red cube to see model's forward direction - remove after testing */}
-      <mesh position={[0, 2, 1]} visible={true}>
+      <mesh position={[0, 2, 1]} visible={false}>
         <boxGeometry args={[0.2, 0.2, 0.2]} />
         <meshBasicMaterial color="red" />
       </mesh>
@@ -334,7 +335,7 @@ function GameScene({
   }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
-  const rotationRef = useRef({ x: 0, y: 0 });
+  //const rotationRef = useRef({ x: 0, y: 0 });
   const mouseRef = useRef({ isLocked: false });
   const raycaster = useRef(new THREE.Raycaster());
   
@@ -347,10 +348,10 @@ function GameScene({
     const handleMouseMove = (event: MouseEvent) => {
       if (!mouseRef.current.isLocked) return;
       const sensitivity = gameSettings.mouseSensitivity * 0.002;
-      rotationRef.current.y -= event.movementX * sensitivity;
+      cameraRotationRef.current.y -= event.movementX * sensitivity;
       const verticalMovement = gameSettings.mouseInvert ? event.movementY : -event.movementY;
-      rotationRef.current.x += verticalMovement * sensitivity;
-      rotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationRef.current.x));
+      cameraRotationRef.current.x += verticalMovement * sensitivity;
+      cameraRotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotationRef.current.x));
     };
     canvas.addEventListener('click', handleClick);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
@@ -360,7 +361,7 @@ function GameScene({
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       document.removeEventListener('mousemove', handleMouseMove);
     };
-  }, [gl, gameSettings]);
+  }, [gl, gameSettings, cameraRotationRef]);
 
   useEffect(() => {
     if (gameState !== 'playing') {
@@ -412,16 +413,16 @@ function GameScene({
     if (!thirdPerson) {
       camera.position.set(px, eyeHeight, pz);
       camera.rotation.order = 'YXZ';
-      camera.rotation.y = rotationRef.current.y;
-      camera.rotation.x = rotationRef.current.x;
+      camera.rotation.y = cameraRotationRef.current.y;
+      camera.rotation.x = cameraRotationRef.current.x;
       camera.rotation.z = 0;
     } else {
       const baseDistance = 2.5;
       const minDistance = 1.2;
       const height = 2.2;
       
-      const yaw = rotationRef.current.y;
-      const pitch = rotationRef.current.x * 0.4;
+      const yaw = cameraRotationRef.current.y;
+      const pitch = cameraRotationRef.current.x * 0.4;
       
       const camX = px - Math.sin(yaw) * baseDistance;
       const camY = height - Math.sin(pitch) * 1.2;
@@ -440,8 +441,8 @@ function GameScene({
       camera.lookAt(px, 1.2, pz);
     }
 
-    cameraRotationRef.current.x = rotationRef.current.x;
-    cameraRotationRef.current.y = rotationRef.current.y;
+    //cameraRotationRef.current.x = rotationRef.current.x;
+   // cameraRotationRef.current.y = rotationRef.current.y;
 
     if (groupRef.current && roomShift.intensity > 0) {
       groupRef.current.position.x = roomShift.x * roomShift.intensity;
@@ -1025,7 +1026,22 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     getOrbs: () => memoryOrbs,
     getGuardians: () => guardians.current,
     getPowerUps: () => powerUps,
-    getPlayerLookRotation: () => player.lookRotationY 
+    getPlayerLookRotation: () => player.lookRotationY,
+    // CHANGE: Expose a new method to control the camera look from a joystick
+    updateLookRotation: (dx: number | null, dy: number | null) => {
+      if (dx === null || dy === null) return;
+
+      // This sensitivity value can be tweaked for better feel
+      const lookSensitivity = 0.03; 
+      
+      // Update camera yaw (left/right)
+      cameraRotationRef.current.y -= dx * lookSensitivity;
+
+      // Update camera pitch (up/down) and clamp it
+      const verticalMovement = gameSettings.mouseInvert ? -dy : dy;
+      cameraRotationRef.current.x -= verticalMovement * lookSensitivity;
+      cameraRotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotationRef.current.x));
+    }
   }));
 
   useEffect(() => {
@@ -1573,12 +1589,15 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   ];
 
   return (
-    <div className="w-full h-full bg-background relative">
+    <div className="w-full h-full bg-black relative">
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-10">
-          <div className="text-white text-2xl font-bold animate-pulse">
-            Loading Next Level...
-          </div>
+           <Loader 
+            text="Processing..." 
+            size={100} 
+            color="#ff0000" 
+            className="my-loader" 
+          />
         </div>
       )}
       <Canvas
@@ -1606,29 +1625,64 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           onSpecialOrbClick={handleSpecialOrbClick}
         />
       </Canvas>
-      <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm max-w-xs">
-        <div className="font-bold mb-2 text-green-400">✅ Controls:</div>
-        <div>{thirdPerson ? 'S: Forward, W: Backward, A/D: Strafe' : 'WASD: Move (Camera-Relative)'}</div>
-        <div>Hold Shift: Sprint</div>
-        <div>V: Toggle Camera View</div>
-        <div>Mouse: Look Around</div>
-        <div>Click: Lock Mouse</div>
-        <div>ESC: Pause</div>
-        <div>Space: Use Thunder Power-Up</div> 
-        <div className="mt-2 text-xs border-t border-gray-600 pt-2">
-          <div className="text-yellow-300">Mode: {thirdPerson ? 'Third Person' : 'First Person'}</div>
-          <div className="text-blue-300">Sprint: {sprintingRef.current ? 'Active' : 'Ready'}</div>
-        </div>
-        <div className="mt-2 text-xs border-t border-gray-600 pt-2">
-            <div className="text-green-300">Guards: {guardians.current.length}</div>
-            <div className="text-red-300">Alert: {guardians.current.filter(g => g.alert).length}</div>
-            <div className="text-yellow-300">
-                Status: {guardians.current.some(g => g.alert) ? 'HUNTING' : 'PATROLLING'}
-            </div>
-        </div>
+      <div className="hidden md:block absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm max-w-xs">
+    <div className="font-bold mb-2 text-green-400">✅ Controls:</div>
+    <div>{thirdPerson ? 'S: Forward, W: Backward, A/D: Strafe' : 'WASD: Move (Camera-Relative)'}</div>
+    <div>Hold Shift: Sprint</div>
+    <div>V: Toggle Camera View</div>
+    <div>Mouse: Look Around</div>
+    <div>Click: Lock Mouse</div>
+    <div>ESC: Pause</div>
+    <div>Space: Use Thunder Power-Up</div> 
+    <div className="mt-2 text-xs border-t border-gray-600 pt-2">
+      <div className="text-yellow-300">Mode: {thirdPerson ? 'Third Person' : 'First Person'}</div>
+      <div className="text-blue-300">Sprint: {sprintingRef.current ? 'Active' : 'Ready'}</div>
+    </div>
+    <div className="mt-2 text-xs border-t border-gray-600 pt-2">
+      <div className="text-green-300">Guards: {guardians.current.length}</div>
+      <div className="text-red-300">Alert: {guardians.current.filter(g => g.alert).length}</div>
+      <div className="text-yellow-300">
+        Status: {guardians.current.some(g => g.alert) ? 'HUNTING' : 'PATROLLING'}
       </div>
-      {activeChallenge && (
-  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-purple-900 bg-opacity-80 border-2 border-purple-400 text-white p-4 rounded-lg text-center shadow-lg w-96">
+    </div>
+  </div>
+
+  {/* Desktop (full) */}
+<div className="hidden md:block absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm max-w-xs">
+  <div className="font-bold mb-2 text-green-400">✅ Controls:</div>
+  <div>{thirdPerson ? 'S: Forward, W: Backward, A/D: Strafe' : 'WASD: Move (Camera-Relative)'}</div>
+  <div>Hold Shift: Sprint</div>
+  <div>V: Toggle Camera View</div>
+  <div>Mouse: Look Around</div>
+  <div>Click: Lock Mouse</div>
+  <div>ESC: Pause</div>
+  <div>Space: Use Thunder Power-Up</div> 
+  <div className="mt-2 text-xs border-t border-gray-600 pt-2">
+    <div className="text-yellow-300">Mode: {thirdPerson ? 'Third Person' : 'First Person'}</div>
+    <div className="text-blue-300">Sprint: {sprintingRef.current ? 'Active' : 'Ready'}</div>
+  </div>
+  <div className="mt-2 text-xs border-t border-gray-600 pt-2">
+    <div className="text-green-300">Guards: {guardians.current.length}</div>
+    <div className="text-red-300">Alert: {guardians.current.filter(g => g.alert).length}</div>
+    <div className="text-yellow-300">
+      Status: {guardians.current.some(g => g.alert) ? 'HUNTING' : 'PATROLLING'}
+    </div>
+  </div>
+</div>
+
+{/* Mobile (compact) */}
+<div className="md:hidden absolute bottom-3 left-1/2 transform -translate-x-1/2 bg-black/60 text-white px-3 py-2 rounded-lg text-xs flex space-x-3">
+  <span className="text-yellow-300">🎮 {thirdPerson ? "3rd" : "1st"}</span>
+  <span className="text-blue-300">⚡ {sprintingRef.current ? "Sprint!" : "Ready"}</span>
+  <span className="text-green-300">👮 {guardians.current.length}</span>
+  <span className="text-red-300">🚨 {guardians.current.filter(g => g.alert).length}</span>
+</div>
+
+
+{/* ================= ACTIVE CHALLENGE ================= */}
+{/* Desktop (full) */}
+{activeChallenge && (
+  <div className="hidden md:flex flex-col items-center absolute top-4 left-1/2 transform -translate-x-1/2 bg-purple-900 bg-opacity-80 border-2 border-purple-400 text-white p-4 rounded-lg text-center shadow-lg w-96">
     <div className="font-bold text-lg text-yellow-300 animate-pulse">
       {activeChallenge.name}
     </div>
@@ -1638,19 +1692,39 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     </div>
   </div>
 )}
-      {activePowerUps.length > 0 && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm">
-        <div className="font-bold mb-2 text-yellow-400">⚡ Active PowerUps</div>
-        {activePowerUps.map((p, i) => (
-            <div key={i} className="flex justify-between w-32">
-            <span>{p.type}</span>
-            <span>{Math.ceil(p.duration)}s</span>
-            </div>
-        ))}
-        </div>
-    )}
+
+{/* Mobile (compact) */}
+{activeChallenge && (
+  <div className="md:hidden absolute top-2 left-1/2 transform -translate-x-1/2 bg-purple-900 bg-opacity-80 border border-purple-400 text-white px-3 py-1 rounded-lg text-center text-xs shadow">
+    <div className="text-yellow-300 font-bold">{activeChallenge.name}</div>
+    <div className="text-red-400 font-mono">{challengeTimer}s</div>
+  </div>
+)}
+
+
+{/* ================= ACTIVE POWERUPS ================= */}
+{/* Desktop (full) */}
+{activePowerUps.length > 0 && (
+  <div className="hidden md:block absolute top-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm">
+    <div className="font-bold mb-2 text-yellow-400">⚡ Active PowerUps</div>
+    {activePowerUps.map((p, i) => (
+      <div key={i} className="flex justify-between w-32">
+        <span>{p.type}</span>
+        <span>{Math.ceil(p.duration)}s</span>
+      </div>
+    ))}
+  </div>
+)}
+
+{/* Mobile (compact) */}
+{activePowerUps.length > 0 && (
+  <div className="md:hidden absolute top-2 right-2 bg-black/70 text-yellow-300 px-2 py-1 rounded-lg text-xs">
+    {activePowerUps.map((p, i) => (
+      <div key={i}>{p.type} ({Math.ceil(p.duration)}s)</div>
+    ))}
+  </div>
+)}
     </div>
-    
   );
 });
 
