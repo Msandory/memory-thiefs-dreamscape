@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
-import { commonConfig, TILE_SIZE, MAP_COLS, MAP_ROWS } from '../config/gameConfig'; // Import commonConfig and global TILE_SIZE constants
-
+import { commonConfig, TILE_SIZE, MAP_COLS, MAP_ROWS, SpecialOrb } from '../config/gameConfig';
 interface MinimapProps {
   mazeLayout: number[][];
   playerPosition: { x: number; y: number };
@@ -10,6 +9,7 @@ interface MinimapProps {
   playerRotation?: number; // Player's look rotation (Three.js Y-rotation)
   isThirdPerson?: boolean; // To allow minimap to behave differently if needed for camera views
   className?: string;
+  specialOrbs?: SpecialOrb[];
 }
 
 export function Minimap({ 
@@ -20,7 +20,8 @@ export function Minimap({
   powerUps = [],
   playerRotation = 0,
   isThirdPerson = false, // Received from GameCanvas3D now
-  className = "" 
+  className = "" ,
+  specialOrbs = [],
 }: MinimapProps) {
   const minimapSize = 200;
   // Calculate cellSize based on actual maze dimensions from config for consistent scaling
@@ -118,7 +119,22 @@ export function Minimap({
             />
           );
         })}
-        
+         {/* CHANGE: Draw Special Orbs */}
+         {specialOrbs.map((orb, index) => {
+          if (orb.collected) return null;
+          const orbPos = worldToMinimap(orb.x, orb.y);
+          return (
+            <circle
+              key={`special-orb-${index}`}
+              cx={orbPos.x}
+              cy={orbPos.y}
+              r={Math.max(3, cellSize / 3)} // Make it slightly larger
+              fill="#FFD700" // Gold color
+              stroke="#FFFFFF"
+              strokeWidth="1.5"
+            />
+          );
+        })}
         {/* Draw Power-ups */}
         {powerUps.map((powerUp, index) => {
           if (powerUp.collected) return null;
@@ -219,25 +235,29 @@ export function Minimap({
       </svg>
       
       {/* Minimap Legend - Flat Bottom Row */}
-<div className="absolute bottom-1 left-1 flex items-center gap-4 text-xs text-white/70">
-  <div className="flex items-center gap-1">
-    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-    <span>You</span>
-  </div>
-  <div className="flex items-center gap-1">
-    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-    <span>Orbs</span>
-  </div>
-  <div className="flex items-center gap-1">
-    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-    <span>Guards</span>
-  </div>
-  <div className="flex items-center gap-1">
-    <div className="w-2 h-2 bg-green-500"></div>
-    <span>Power-ups</span>
-  </div>
-</div>
-
+      <div className="absolute bottom-1 left-1 flex items-center gap-3 text-xs text-white/70">
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+          <span>You</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+          <span>Orbs</span>
+        </div>
+        {/* CHANGE: Add Special Orb to the legend if one exists */}
+        {specialOrbs.length > 0 && (
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-yellow-400 rounded-full border border-white"></div>
+            <span>Special</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+          <span>Guards</span>
+        </div>
+      </div>
     </div>
+
+    
   );
 }

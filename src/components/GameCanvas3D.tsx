@@ -20,7 +20,11 @@ import {
   MindType, 
   PowerUpType, 
   difficultyConfigs, 
-  commonConfig
+  commonConfig,
+  MiniChallenge,
+  MINI_CHALLENGES,
+  SpecialOrb,
+  SPECIAL_ORB_TYPES
 } from '@/config/gameConfig';
 import { getMaze } from '@/utils/mazeGenerator';
 import { GLTF,SkeletonUtils  } from 'three-stdlib'; 
@@ -168,6 +172,33 @@ function MemoryOrb({
     </mesh>
   );
 }
+// CHANGE: Add new component for Special Orbs
+function SpecialOrbModel({ position, type, collected, onClick }: { position: [number, number, number]; type: SpecialOrb['type']; collected: boolean; onClick: () => void; }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const orbConfig = SPECIAL_ORB_TYPES[type];
+
+  useFrame((state) => {
+    if (meshRef.current && !collected) {
+      meshRef.current.rotation.y = state.clock.elapsedTime * 2.5;
+      meshRef.current.position.y = position[1] + 0.5 + Math.sin(state.clock.elapsedTime * 4) * 0.15;
+    }
+  });
+
+  if (collected) return null;
+
+  return (
+    <mesh ref={meshRef} position={position} onClick={onClick}>
+      <sphereGeometry args={[0.4, 32, 32]} />
+      <meshStandardMaterial
+        color={orbConfig.color}
+        emissive={orbConfig.glowColor}
+        emissiveIntensity={2}
+        toneMapped={false}
+      />
+      <pointLight color={orbConfig.glowColor} intensity={3} distance={5} />
+    </mesh>
+  );
+}
 
 type GuardianGLTFResult = GLTF & { animations: THREE.AnimationClip[]; };
 function GuardianModel({ position, alert, rotationY, guardianIndex  }: { position: [number, number, number]; alert: boolean; rotationY: number; guardianIndex: number; }) {
@@ -267,6 +298,8 @@ function GameScene({
   memoryOrbs,
   guardians,
   powerUps,
+  specialOrbs,
+  onSpecialOrbClick,
   onOrbClick,
   onPowerUpClick,
   roomShift,
@@ -295,7 +328,9 @@ function GameScene({
   isSprinting?: boolean,
   cameraRotationRef: React.MutableRefObject<{ x: number; y: number }>,
   texturePath: string,
-  activePowerUps: ActivePowerUp[] // CHANGE 1: Add to props interface
+  activePowerUps: ActivePowerUp[], // CHANGE 1: Add to props interface
+  specialOrbs: SpecialOrb[],
+  onSpecialOrbClick: (index: number) => void, 
   }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
@@ -462,6 +497,20 @@ function GameScene({
           onClick={() => onOrbClick(index)}
         />
       ))}
+
+    {specialOrbs.map((orb, index) => (
+            <SpecialOrbModel
+              key={`special-orb-${index}`}
+              position={[
+                (orb.x - MAP_COLS * TILE_SIZE / 2) / TILE_SIZE * 2,
+                0.3,
+                (orb.y - MAP_ROWS * TILE_SIZE / 2) / TILE_SIZE * 2
+              ]}
+              type={orb.type}
+              collected={orb.collected}
+              onClick={() => onSpecialOrbClick(index)}
+            />
+          ))}
       {powerUps.map((powerUp, index) => (
         <PowerUpModel
           key={`powerup-${index}`}
@@ -542,7 +591,16 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     triggeredTime: 0,
     alertedGuardCount: 0
   });
-  
+  const [activeChallenge, setActiveChallenge] = useState<MiniChallenge | null>(null);
+  const [challengeTimer, setChallengeTimer] = useState(0);
+  const [specialOrbs, setSpecialOrbs] = useState<SpecialOrb[]>([]);
+  const challengeState = useRef({
+    orbsCollectedWithoutAlert: 0,
+    timeElapsed: 0,
+    allOrbsCollected: false,
+    specialOrbCollected: false,
+  });
+  const challengeStartTimeRef = useRef(0);
   const getCurrentRoomLayout = useCallback(() => {
     if (currentMazeLayout.length > 0) return currentMazeLayout;
     const maze = getMaze(mazeId);
@@ -630,7 +688,16 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       const newOrbs = [...memoryOrbs];
       newOrbs[orbIndex] = { ...orb, collected: true, collectingTime: Date.now() };
       setMemoryOrbs(newOrbs);
-      const newScore = score + 1;
+      const isAnyGuardAlert = guardians.current.some(g => g.alert);
+      if (!isAnyGuardAlert) {
+        challengeState.current.orbsCollectedWithoutAlert++;
+      }
+      const totalOrbs = memoryOrbs.length;
+    const collectedCount = memoryOrbs.filter(o => o.collected).length + 1;
+    if (collectedCount === totalOrbs) {
+      challengeState.current.allOrbsCollected = true;
+    }
+      const newScore = score + 100;
       setScore(newScore);
       onScoreUpdate?.(newScore);
       setRoomShift({ x: (Math.random() - 0.5) * 0.5, y: (Math.random() - 0.5) * 0.5, intensity: 1 });
@@ -638,6 +705,29 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       if (soundsRef.current && !muted) soundsRef.current.orbCollect.play();
     }
   }, [memoryOrbs, player, score, muted, onScoreUpdate, commonConfig.playerRadius, TILE_SIZE]);
+  // CHANGE: Add handler for special orb collection
+  const handleSpecialOrbClick = useCallback((orbIndex: number) => {
+    const orb = specialOrbs[orbIndex];
+    if (!orb || orb.collected) return;
+
+    const dx = player.x - orb.x;
+    const dy = player.y - orb.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < commonConfig.playerRadius + (TILE_SIZE / 4)) {
+      const newOrbs = [...specialOrbs];
+      newOrbs[orbIndex] = { ...orb, collected: true };
+      setSpecialOrbs(newOrbs);
+
+      const newScore = score + orb.points;
+      setScore(newScore);
+      onScoreUpdate?.(newScore);
+      
+      challengeState.current.specialOrbCollected = true;
+
+      if (soundsRef.current && !muted) soundsRef.current.orbCollect.play();
+    }
+  }, [specialOrbs, player.x, player.y, score, onScoreUpdate, muted]);
 
   const handlePowerUpClick = useCallback((powerUpIndex: number) => {
     const pUp = powerUps[powerUpIndex];
@@ -707,7 +797,15 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     setPlayerMovement({ isMoving: false, isRunningFast: false });
     setIsSpawningComplete(false);
     setActivePowerUps([]);
-    
+    challengeState.current = {
+      orbsCollectedWithoutAlert: 0,
+      timeElapsed: 0,
+      allOrbsCollected: false,
+      specialOrbCollected: false,
+    };
+    setActiveChallenge(null);
+    setChallengeTimer(0);
+    setSpecialOrbs([]);
     const config = getLevelConfig(level);
     const spawnedPositions: {x: number, y: number}[] = [];
     const minSpawnDistance = commonConfig.safeDistance || 100;
@@ -771,7 +869,29 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       newPowerUps.push({ ...powerUpPos, type: randomType, collected: false });
     }
     setPowerUps(newPowerUps);
+    if (Math.random() < 0.5) {
+      const newChallenge = MINI_CHALLENGES[Math.floor(Math.random() * MINI_CHALLENGES.length)];
+      setActiveChallenge(newChallenge);
+      setChallengeTimer(newChallenge.duration);
+      challengeStartTimeRef.current = Date.now();
+      console.log(`New Challenge: ${newChallenge.name}`);
 
+      // If the challenge requires a special orb, spawn it
+      if (newChallenge.id === 'special_collector') {
+        const orbPos = getUniqueSafePosition();
+        if (orbPos) {
+          const newSpecialOrb: SpecialOrb = {
+            ...orbPos,
+            type: 'golden',
+            points: SPECIAL_ORB_TYPES.golden.points,
+            collected: false,
+            pulse: Math.random() * Math.PI,
+            glow: 1.0,
+          };
+          setSpecialOrbs([newSpecialOrb]);
+        }
+      }
+    }
     timerStarted.current = true; 
     const t = config.timer;
     setTimeRemaining(t); 
@@ -788,7 +908,66 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       console.log("Level spawning complete!");
     }, 500);
   }, [getLevelConfig, getRandomSafePosition, onGameStateChange, onTimerActive, onTimerUpdate, onLevelChange, commonConfig.safeDistance, commonConfig.patrolDirectionChangeInterval, commonConfig.patrolDirectionChangeRandomOffset]);
+  useEffect(() => {
+    if (!isActive || gameState !== 'playing' || !activeChallenge) return;
 
+    // Timer for the challenge itself (counts down faster)
+    const timerInterval = setInterval(() => {
+      setChallengeTimer(prev => {
+        if (prev <= 1) {
+          console.log(`Challenge '${activeChallenge.name}' failed: Time ran out.`);
+          setActiveChallenge(null); // Challenge ends
+          clearInterval(timerInterval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 800);
+
+    // Interval to check for win condition
+    const conditionCheckInterval = setInterval(() => {
+      // The check now only runs if activeChallenge is not null.
+      if (activeChallenge) {
+        // CONSTRUCT THE FULL, CORRECTLY-TYPED OBJECT HERE
+        const fullChallengeState = {
+
+          ...challengeState.current, // Includes all progress metrics
+        
+          activeChallenge: activeChallenge,
+        
+          challengeStartTime: challengeStartTimeRef.current,
+        
+          // Convert challengeProgress to a Record<string, any>
+        
+          challengeProgress: { progress: challengeState.current.orbsCollectedWithoutAlert },
+        
+          // The challenge is not completed until this function returns true
+        
+          challengeCompleted: false, 
+        
+        };
+
+        // Pass the correctly typed object to the condition function
+        if (activeChallenge.condition(fullChallengeState)) {
+          console.log(`Challenge '${activeChallenge.name}' COMPLETED!`);
+          const pointsWon = activeChallenge.points;
+          setScore(s => {
+            const newScore = s + pointsWon;
+            // FIX: Use the newScore value to prevent stale state issues
+            onScoreUpdate?.(newScore);
+            return newScore;
+          });
+          setActiveChallenge(null); // Challenge ends on success
+        }
+      }
+    }, 500); // Check every half second
+
+    return () => {
+      clearInterval(timerInterval);
+      clearInterval(conditionCheckInterval);
+    };
+
+}, [isActive, gameState, activeChallenge, onScoreUpdate]);
   useEffect(() => {
     const collectedOrbs = memoryOrbs.filter(orb => orb.collected).length;
     const totalOrbs = memoryOrbs.length;
@@ -1029,7 +1208,19 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           }
         }
       });
-
+   // proximity check for special orbs
+   specialOrbs.forEach((orb, index) => {
+    if (!orb.collected) {
+      const dx = player.x - orb.x;
+      const dy = player.y - orb.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      // Use the same collection radius as regular orbs
+      if (distance < commonConfig.playerRadius + (TILE_SIZE / 4)) {
+        // We already have a function for this!
+        handleSpecialOrbClick(index);
+      }
+    }
+  });
       powerUps.forEach((pUp, index) => {
         if (!pUp.collected) {
           const dx = player.x - pUp.x;
@@ -1043,7 +1234,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
     }, 16); 
     return () => clearInterval(moveInterval);
-  }, [isActive, gameState, memoryOrbs, powerUps, player, handleOrbClick, handlePowerUpClick, checkCollision, cameraRotationRef, onPlayerPositionUpdate, onPlayerLookRotationUpdate, thirdPerson, activePowerUps, muted, commonConfig, TILE_SIZE]); 
+  }, [isActive, gameState,specialOrbs, memoryOrbs, powerUps, player, handleOrbClick, handlePowerUpClick, checkCollision, cameraRotationRef, onPlayerPositionUpdate, onPlayerLookRotationUpdate, thirdPerson, activePowerUps, muted, commonConfig, TILE_SIZE]); 
 
   const checkGuardianPlayerCollision = useCallback((guardX: number, guardY: number, playerX: number, playerY: number) => {
     const dx = guardX - playerX;
@@ -1336,6 +1527,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     const id = setInterval(() => {
+         // Track elapsed time for challenges
+      challengeState.current.timeElapsed++;
       setTimeRemaining(prev => {
         const next = Math.max(0, prev - 1);
         onTimerUpdate?.(next);
@@ -1409,6 +1602,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           cameraRotationRef={cameraRotationRef} 
           texturePath={texturePath} 
           activePowerUps={activePowerUps} // CHANGE 1: Pass activePowerUps to GameScene
+          specialOrbs={specialOrbs}
+          onSpecialOrbClick={handleSpecialOrbClick}
         />
       </Canvas>
       <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm max-w-xs">
@@ -1432,6 +1627,17 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
             </div>
         </div>
       </div>
+      {activeChallenge && (
+  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-purple-900 bg-opacity-80 border-2 border-purple-400 text-white p-4 rounded-lg text-center shadow-lg w-96">
+    <div className="font-bold text-lg text-yellow-300 animate-pulse">
+      {activeChallenge.name}
+    </div>
+    <div className="text-sm my-1">{activeChallenge.description}</div>
+    <div className="font-mono text-2xl font-extrabold text-red-400">
+      {challengeTimer}s
+    </div>
+  </div>
+)}
       {activePowerUps.length > 0 && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm">
         <div className="font-bold mb-2 text-yellow-400">⚡ Active PowerUps</div>
