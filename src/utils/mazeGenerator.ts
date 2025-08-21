@@ -1,4 +1,10 @@
 import { Difficulty, MindType, TILE_SIZE, MAP_COLS, MAP_ROWS } from '../config/gameConfig';
+import brickWallTexture from '@/assets/sprites/brickWallTexture.avif';
+import stoneWallTexture from '@/assets/Texture/stoneWallTexture.jpg';
+import metalWallTexture from '@/assets/Texture/marbleWallTexture.jpg';
+import glassWallTexture from '@/assets/sprites/glassWallTexture.avif';
+import woodWallTexture from '@/assets/sprites/woodWallTexture.avif';
+import marbleWallTexture from '@/assets/sprites/marbleWallTexture.avif';
 
 export interface MazeConfig {
   id: string;
@@ -6,6 +12,7 @@ export interface MazeConfig {
   difficulty: Difficulty;
   mind: MindType;
   layout: number[][];
+  texturePath: string; // Added texturePath
 }
 
 // Helper function to check if all path cells (0s) are connected
@@ -58,152 +65,357 @@ function isMazeConnected(maze: number[][]): boolean {
 }
 
 // Maze generation algorithm using a modified Prim's algorithm
+// Improved maze generation algorithm with better path connectivity
 function generateMaze(complexity: number, density: number): number[][] {
+  // Initialize maze with walls
   const maze: number[][] = Array(MAP_ROWS).fill(null).map(() => Array(MAP_COLS).fill(1));
-  const walls: [number, number][] = [];
-  const visited = Array(MAP_ROWS).fill(null).map(() => Array(MAP_COLS).fill(false));
-
-  // Start with a single path cell
-  const startR = 1;
-  const startC = 1;
-  maze[startR][startC] = 0;
-  visited[startR][startC] = true;
-
-  // Add neighboring walls to the list
-  const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-  for (const [dr, dc] of dirs) {
-    const nr = startR + dr;
-    const nc = startC + dc;
-    if (nr > 0 && nr < MAP_ROWS - 1 && nc > 0 && nc < MAP_COLS - 1 && maze[nr][nc] === 1) {
-      walls.push([nr, nc]);
+  
+  // Ensure border walls
+  for (let r = 0; r < MAP_ROWS; r++) {
+    for (let c = 0; c < MAP_COLS; c++) {
+      if (r === 0 || r === MAP_ROWS - 1 || c === 0 || c === MAP_COLS - 1) {
+        maze[r][c] = 1;
+      }
     }
   }
 
-  // Prim's algorithm to carve paths
+  // Create wide main corridors first for better navigation
+  createWideMainCorridors(maze);
+  
+  // Create open rooms instead of narrow passages
+  createOpenRooms(maze);
+  
+  // Add minimal connecting paths with reduced complexity
+  generateSimplePaths(maze, Math.min(complexity * 0.3, 8), density * 0.8);
+  
+  // Ensure wide path areas
+  expandNarrowPaths(maze);
+  
+  // Final connectivity check
+  ensureFullConnectivity(maze);
+  
+  return maze;
+}
+function createWideMainCorridors(maze: number[][]) {
+  const midRow = Math.floor(MAP_ROWS / 2);
+  const midCol = Math.floor(MAP_COLS / 2);
+  
+  // Create wide horizontal corridor (3 tiles high)
+  for (let c = 1; c < MAP_COLS - 1; c++) {
+    maze[midRow - 1][c] = 0;
+    maze[midRow][c] = 0;
+    maze[midRow + 1][c] = 0;
+  }
+  
+  // Create wide vertical corridor (3 tiles wide)
+  for (let r = 1; r < MAP_ROWS - 1; r++) {
+    maze[r][midCol - 1] = 0;
+    maze[r][midCol] = 0;
+    maze[r][midCol + 1] = 0;
+  }
+}
+
+function createOpenRooms(maze: number[][]) {
+  const rooms = [
+    // Top-left room
+    { startR: 2, endR: 5, startC: 2, endC: 6 },
+    // Top-right room
+    { startR: 2, endR: 5, startC: MAP_COLS - 7, endC: MAP_COLS - 3 },
+    // Bottom-left room
+    { startR: MAP_ROWS - 6, endR: MAP_ROWS - 3, startC: 2, endC: 6 },
+    // Bottom-right room
+    { startR: MAP_ROWS - 6, endR: MAP_ROWS - 3, startC: MAP_COLS - 7, endC: MAP_COLS - 3 },
+  ];
+
+  for (const room of rooms) {
+    for (let r = room.startR; r <= room.endR; r++) {
+      for (let c = room.startC; c <= room.endC; c++) {
+        if (r < MAP_ROWS - 1 && c < MAP_COLS - 1) {
+          maze[r][c] = 0;
+        }
+      }
+    }
+  }
+}
+function generateSimplePaths(maze: number[][], complexity: number, density: number) {
+  // Greatly reduced complexity - focus on simple, wide paths
+  for (let i = 0; i < complexity; i++) {
+    if (Math.random() < density) {
+      const row = Math.floor(Math.random() * (MAP_ROWS - 6)) + 3;
+      const col = Math.floor(Math.random() * (MAP_COLS - 6)) + 3;
+      
+      // Create 2x2 open areas instead of single tiles
+      if (maze[row][col] === 1 && maze[row][col + 1] === 1 && 
+          maze[row + 1][col] === 1 && maze[row + 1][col + 1] === 1) {
+        
+        // Only add if it connects to existing paths reasonably
+        let nearbyPaths = 0;
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const nr = row + dr;
+            const nc = col + dc;
+            if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS && maze[nr][nc] === 0) {
+              nearbyPaths++;
+            }
+          }
+        }
+        
+        // Only create the area if there are paths nearby but not too many
+        if (nearbyPaths >= 3 && nearbyPaths <= 8) {
+          maze[row][col] = 0;
+          maze[row][col + 1] = 0;
+          maze[row + 1][col] = 0;
+          maze[row + 1][col + 1] = 0;
+        }
+      }
+    }
+  }
+}
+function expandNarrowPaths(maze: number[][]) {
+  const expansions: [number, number][] = [];
+  
+  // Find narrow path areas and mark them for expansion
+  for (let r = 2; r < MAP_ROWS - 2; r++) {
+    for (let c = 2; c < MAP_COLS - 2; c++) {
+      if (maze[r][c] === 0) {
+        // Check if this is a narrow corridor (surrounded by walls on opposite sides)
+        const hasVerticalWalls = (maze[r][c - 1] === 1 && maze[r][c + 1] === 1);
+        const hasHorizontalWalls = (maze[r - 1][c] === 1 && maze[r + 1][c] === 1);
+        
+        if (hasVerticalWalls || hasHorizontalWalls) {
+          // Expand by removing adjacent walls
+          if (hasVerticalWalls && Math.random() > 0.4) {
+            if (maze[r][c - 1] === 1) expansions.push([r, c - 1]);
+            if (maze[r][c + 1] === 1) expansions.push([r, c + 1]);
+          }
+          if (hasHorizontalWalls && Math.random() > 0.4) {
+            if (maze[r - 1][c] === 1) expansions.push([r - 1, c]);
+            if (maze[r + 1][c] === 1) expansions.push([r + 1, c]);
+          }
+        }
+      }
+    }
+  }
+  
+  // Apply expansions
+  for (const [r, c] of expansions) {
+    if (r > 0 && r < MAP_ROWS - 1 && c > 0 && c < MAP_COLS - 1) {
+      maze[r][c] = 0;
+    }
+  }
+}
+function createMainCorridors(maze: number[][]) {
+  const midRow = Math.floor(MAP_ROWS / 2);
+  const midCol = Math.floor(MAP_COLS / 2);
+  
+  // Create main horizontal corridor (with some breaks for interest)
+  for (let c = 2; c < MAP_COLS - 2; c++) {
+    if (Math.random() > 0.2) { // 80% chance of being open
+      maze[midRow][c] = 0;
+    }
+  }
+  
+  // Create main vertical corridor
+  for (let r = 2; r < MAP_ROWS - 2; r++) {
+    if (Math.random() > 0.2) { // 80% chance of being open
+      maze[r][midCol] = 0;
+    }
+  }
+  
+  // Connect the corridors at intersection
+  maze[midRow][midCol] = 0;
+  
+  // Add diagonal corridors for more variety
+  for (let i = 2; i < Math.min(MAP_ROWS, MAP_COLS) - 2; i++) {
+    if (Math.random() > 0.7) { // 30% chance of diagonal paths
+      if (i < MAP_ROWS - 2 && i < MAP_COLS - 2) {
+        maze[i][i] = 0;
+        maze[MAP_ROWS - 1 - i][i] = 0;
+      }
+    }
+  }
+}
+
+function generateOrganicPaths(maze: number[][], complexity: number, density: number) {
+  const visited = Array(MAP_ROWS).fill(null).map(() => Array(MAP_COLS).fill(false));
+  const walls: [number, number, number, number][] = []; // [row, col, fromRow, fromCol]
+  const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+  // Start from multiple points for better distribution
+  const startPoints = [
+    [1, 1], [1, MAP_COLS - 2], [MAP_ROWS - 2, 1], [MAP_ROWS - 2, MAP_COLS - 2],
+    [Math.floor(MAP_ROWS / 2), Math.floor(MAP_COLS / 2)]
+  ];
+
+  for (const [startR, startC] of startPoints) {
+    if (maze[startR][startC] === 0 && !visited[startR][startC]) {
+      visited[startR][startC] = true;
+      
+      for (const [dr, dc] of dirs) {
+        const nr = startR + dr;
+        const nc = startC + dc;
+        if (nr > 0 && nr < MAP_ROWS - 1 && nc > 0 && nc < MAP_COLS - 1 && maze[nr][nc] === 1) {
+          walls.push([nr, nc, startR, startC]);
+        }
+      }
+    }
+  }
+
+  // Modified Prim's algorithm with better path selection
   while (walls.length > 0) {
-    // Pick a random wall
     const wallIndex = Math.floor(Math.random() * walls.length);
-    const [wallR, wallC] = walls[wallIndex];
+    const [wallR, wallC, fromR, fromC] = walls[wallIndex];
     walls.splice(wallIndex, 1);
 
-    // Check if wall connects to exactly one path
-    let pathCount = 0;
-    let pathDir: [number, number] | null = null;
+    if (visited[wallR][wallC]) continue;
+
+    // Check if this wall connects exactly two paths
+    let adjacentPaths = 0;
     for (const [dr, dc] of dirs) {
       const nr = wallR + dr;
       const nc = wallC + dc;
       if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS && maze[nr][nc] === 0) {
-        pathCount++;
-        pathDir = [dr, dc];
+        adjacentPaths++;
       }
     }
 
-    if (pathCount === 1 && pathDir) {
-      // Make the wall a path
+    // Only convert to path if it connects appropriately
+    if (adjacentPaths === 1) {
       maze[wallR][wallC] = 0;
       visited[wallR][wallC] = true;
 
-      // Extend path to the next cell if possible
-      const [dr, dc] = pathDir;
-      const nextR = wallR - dr; // Opposite direction to find unvisited cell
-      const nextC = wallC - dc;
-      if (
-        nextR > 0 &&
-        nextR < MAP_ROWS - 1 &&
-        nextC > 0 &&
-        nextC < MAP_COLS - 1 &&
-        maze[nextR][nextC] === 1 &&
-        !visited[nextR][nextC]
-      ) {
-        maze[nextR][nextC] = 0;
-        visited[nextR][nextC] = true;
-
-        // Add new neighboring walls
-        for (const [ndr, ndc] of dirs) {
-          const nnr = nextR + ndr;
-          const nnc = nextC + ndc;
-          if (
-            nnr > 0 &&
-            nnr < MAP_ROWS - 1 &&
-            nnc > 0 &&
-            nnc < MAP_COLS - 1 &&
-            maze[nnr][nnc] === 1 &&
-            !walls.some(([wr, wc]) => wr === nnr && wc === nnc)
-          ) {
-            walls.push([nnr, nnc]);
+      // Add new walls with preference for continuing in same direction
+      for (const [dr, dc] of dirs) {
+        const nr = wallR + dr;
+        const nc = wallC + dc;
+        if (nr > 0 && nr < MAP_ROWS - 1 && nc > 0 && nc < MAP_COLS - 1 && 
+            maze[nr][nc] === 1 && !visited[nr][nc]) {
+          
+          // Prefer straight paths for better navigation
+          const isStraight = (nr === fromR + (wallR - fromR) && nc === fromC + (wallC - fromC));
+          if (isStraight || Math.random() > 0.3) { // 70% chance to add straight paths
+            walls.push([nr, nc, wallR, wallC]);
           }
-        }
-      }
-
-      // Add neighboring walls of the current wall
-      for (const [ndr, ndc] of dirs) {
-        const nnr = wallR + ndr;
-        const nnc = wallC + ndc;
-        if (
-          nnr > 0 &&
-          nnr < MAP_ROWS - 1 &&
-          nnc > 0 &&
-          nnc < MAP_COLS - 1 &&
-          maze[nnr][nnc] === 1 &&
-          !walls.some(([wr, wc]) => wr === nnr && wc === nnc)
-        ) {
-          walls.push([nnr, nnc]);
         }
       }
     }
   }
 
-  // Add additional paths based on complexity and density
+  // Add additional complexity paths with controlled density
   for (let i = 0; i < complexity; i++) {
     if (Math.random() < density) {
-      const row = Math.floor(Math.random() * (MAP_ROWS - 2)) + 1;
-      const col = Math.floor(Math.random() * (MAP_COLS - 2)) + 1;
+      const row = Math.floor(Math.random() * (MAP_ROWS - 4)) + 2;
+      const col = Math.floor(Math.random() * (MAP_COLS - 4)) + 2;
+      
+      // Only convert if it improves connectivity
       if (maze[row][col] === 1) {
-        maze[row][col] = 0;
-        // Ensure connectivity by connecting to an adjacent path if possible
+        let pathNeighbors = 0;
         for (const [dr, dc] of dirs) {
           const nr = row + dr;
           const nc = col + dc;
-          if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS && maze[nr][nc] === 0) {
-            break; // Already connected
-          }
+          if (maze[nr][nc] === 0) pathNeighbors++;
+        }
+        
+        // Only convert if it connects to exactly 1 or 2 paths (avoid dead ends and intersections)
+        if (pathNeighbors >= 1 && pathNeighbors <= 2) {
+          maze[row][col] = 0;
         }
       }
     }
   }
+}
 
-  // Verify connectivity - retry if not connected
-  let attempts = 0;
-  while (!isMazeConnected(maze) && attempts < 5) {
-    console.log(`Maze not connected, attempt ${attempts + 1}`);
-    // Add some connecting paths
-    for (let i = 0; i < 10; i++) {
-      const row = Math.floor(Math.random() * (MAP_ROWS - 2)) + 1;
-      const col = Math.floor(Math.random() * (MAP_COLS - 2)) + 1;
-      maze[row][col] = 0;
+function ensureMinimumPathWidth(maze: number[][]) {
+  // Ensure no single-tile choke points by checking 2x2 areas
+  for (let r = 1; r < MAP_ROWS - 2; r++) {
+    for (let c = 1; c < MAP_COLS - 2; c++) {
+      // If we find a pattern that creates a choke point, open it up
+      if (maze[r][c] === 1 && maze[r][c + 1] === 0 && maze[r + 1][c] === 0 && maze[r + 1][c + 1] === 1) {
+        // Randomly choose which corner to open
+        if (Math.random() > 0.5) {
+          maze[r][c] = 0;
+        } else {
+          maze[r + 1][c + 1] = 0;
+        }
+      }
     }
-    attempts++;
   }
+}
 
-  // If still not connected after attempts, create emergency connections
-  if (!isMazeConnected(maze)) {
-    console.warn("Creating emergency maze connections");
-    // Create horizontal and vertical corridors to ensure connectivity
-    const midRow = Math.floor(MAP_ROWS / 2);
-    const midCol = Math.floor(MAP_COLS / 2);
-    
-    // Horizontal corridor
+function ensureFullConnectivity(maze: number[][]) {
+  if (isMazeConnected(maze)) return;
+
+  // Find all disconnected regions and connect them
+  const regions: number[][][] = [];
+  const visited = Array(MAP_ROWS).fill(null).map(() => Array(MAP_COLS).fill(false));
+  
+  for (let r = 1; r < MAP_ROWS - 1; r++) {
     for (let c = 1; c < MAP_COLS - 1; c++) {
-      maze[midRow][c] = 0;
-    }
-    
-    // Vertical corridor
-    for (let r = 1; r < MAP_ROWS - 1; r++) {
-      maze[r][midCol] = 0;
+      if (maze[r][c] === 0 && !visited[r][c]) {
+        const region: number[][] = [];
+        const queue: [number, number][] = [[r, c]];
+        visited[r][c] = true;
+        region.push([r, c]);
+
+        while (queue.length > 0) {
+          const [cr, cc] = queue.shift()!;
+          for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+            const nr = cr + dr;
+            const nc = cc + dc;
+            if (nr >= 1 && nr < MAP_ROWS - 1 && nc >= 1 && nc < MAP_COLS - 1 && 
+                maze[nr][nc] === 0 && !visited[nr][nc]) {
+              visited[nr][nc] = true;
+              region.push([nr, nc]);
+              queue.push([nr, nc]);
+            }
+          }
+        }
+        regions.push(region);
+      }
     }
   }
 
-  return maze;
+  // Connect regions by creating paths between them
+  for (let i = 0; i < regions.length - 1; i++) {
+    const region1 = regions[i];
+    const region2 = regions[i + 1];
+    
+    // Find closest points between regions
+    let minDistance = Infinity;
+    let point1: number[] = [];
+    let point2: number[] = [];
+    
+    for (const [r1, c1] of region1) {
+      for (const [r2, c2] of region2) {
+        const distance = Math.abs(r1 - r2) + Math.abs(c1 - c2);
+        if (distance < minDistance) {
+          minDistance = distance;
+          point1 = [r1, c1];
+          point2 = [r2, c2];
+        }
+      }
+    }
+    
+    // Create a path between the closest points
+    createPathBetweenPoints(maze, point1[0], point1[1], point2[0], point2[1]);
+  }
+}
+
+function createPathBetweenPoints(maze: number[][], r1: number, c1: number, r2: number, c2: number) {
+  let currentR = r1;
+  let currentC = c1;
+  
+  while (currentR !== r2 || currentC !== c2) {
+    maze[currentR][currentC] = 0;
+    
+    if (currentR < r2) currentR++;
+    else if (currentR > r2) currentR--;
+    
+    if (currentC < c2) currentC++;
+    else if (currentC > c2) currentC--;
+  }
+  
+  maze[r2][c2] = 0;
 }
 
 // Pre-generated mazes for each mind/difficulty combination
@@ -231,15 +443,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
           [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
           [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+        ],
+        texturePath: brickWallTexture,
       },
       {
         id: 'scholar_easy_2',
         name: 'The Study Hall',
         difficulty: 'easy',
         mind: 'scholar',
-        layout: generateMaze(15, 0.6)
-      }
+        layout: generateMaze(5, 0.3), // Much reduced complexity
+        texturePath: brickWallTexture,
+      },
     ],
     medium: [
       {
@@ -249,29 +463,31 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         mind: 'scholar',
         layout: [
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-          [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
-          [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1],
-          [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1],
-          [1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1],
-          [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1],
-          [1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1],
-          [1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-          [1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1],
-          [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
-          [1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
-          [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-          [1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1],
-          [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+          [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+          [1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1],
+          [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1],
+          [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1],
+          [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+          [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+          [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+          [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+          [1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+          [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+          [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+          [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+        ],
+        texturePath: brickWallTexture,
       },
       {
         id: 'scholar_medium_2',
         name: 'The Knowledge Labyrinth',
         difficulty: 'medium',
         mind: 'scholar',
-        layout: generateMaze(25, 0.4)
-      }
+        layout: generateMaze(8, 0.25), // Reduced complexity
+        texturePath: brickWallTexture,
+      },
     ],
     hard: [
       {
@@ -281,30 +497,32 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         mind: 'scholar',
         layout: [
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-          [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-          [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1],
-          [1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-          [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1],
           [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-          [1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1],
-          [1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
-          [1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1],
+          [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1],
+          [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+          [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+          [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+          [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
           [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-          [1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
-          [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-          [1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1],
-          [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+          [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+          [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+          [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+          [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+          [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1],
+          [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
           [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+        ],
+        texturePath: brickWallTexture,
       },
       {
         id: 'scholar_hard_2',
-        name: 'The Master\'s Vault',
+        name: "The Master's Vault",
         difficulty: 'hard',
         mind: 'scholar',
-        layout: generateMaze(35, 0.3)
-      }
-    ]
+        layout: generateMaze(12, 0.2), // Still reduced complexity
+        texturePath: brickWallTexture,
+      },
+    ],
   },
   artist: {
     easy: [
@@ -313,15 +531,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Paint Studio',
         difficulty: 'easy',
         mind: 'artist',
-        layout: generateMaze(12, 0.7)
+        layout: generateMaze(4, 0.35), // Much simpler
+        texturePath: stoneWallTexture,
       },
       {
-        id: 'artist_easy_2', 
+        id: 'artist_easy_2',
         name: 'The Canvas Room',
         difficulty: 'easy',
         mind: 'artist',
-        layout: generateMaze(14, 0.65)
-      }
+        layout: generateMaze(5, 0.3),
+        texturePath: stoneWallTexture,
+      },
     ],
     medium: [
       {
@@ -329,15 +549,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Gallery Maze',
         difficulty: 'medium',
         mind: 'artist',
-        layout: generateMaze(22, 0.45)
+        layout: generateMaze(8, 0.25),
+        texturePath: stoneWallTexture,
       },
       {
         id: 'artist_medium_2',
         name: 'The Sculpture Garden',
-        difficulty: 'medium', 
+        difficulty: 'medium',
         mind: 'artist',
-        layout: generateMaze(26, 0.4)
-      }
+        layout: generateMaze(10, 0.2),
+        texturePath: stoneWallTexture,
+      },
     ],
     hard: [
       {
@@ -345,16 +567,18 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Creative Chaos',
         difficulty: 'hard',
         mind: 'artist',
-        layout: generateMaze(32, 0.35)
+        layout: generateMaze(15, 0.18),
+        texturePath: stoneWallTexture,
       },
       {
         id: 'artist_hard_2',
         name: 'The Masterpiece Vault',
         difficulty: 'hard',
         mind: 'artist',
-        layout: generateMaze(38, 0.25)
-      }
-    ]
+        layout: generateMaze(18, 0.15),
+        texturePath: stoneWallTexture,
+      },
+    ],
   },
   detective: {
     easy: [
@@ -363,15 +587,17 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Case Files',
         difficulty: 'easy',
         mind: 'detective',
-        layout: generateMaze(13, 0.68)
+        layout: generateMaze(4, 0.35),
+        texturePath: metalWallTexture,
       },
       {
         id: 'detective_easy_2',
         name: 'The Evidence Room',
         difficulty: 'easy',
-        mind: 'detective', 
-        layout: generateMaze(15, 0.62)
-      }
+        mind: 'detective',
+        layout: generateMaze(6, 0.3),
+        texturePath: metalWallTexture,
+      },
     ],
     medium: [
       {
@@ -379,37 +605,42 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Investigation Hub',
         difficulty: 'medium',
         mind: 'detective',
-        layout: generateMaze(24, 0.42)
+        layout: generateMaze(9, 0.25),
+        texturePath: metalWallTexture,
       },
       {
         id: 'detective_medium_2',
         name: 'The Crime Scene',
         difficulty: 'medium',
         mind: 'detective',
-        layout: generateMaze(27, 0.38)
-      }
+        layout: generateMaze(11, 0.22),
+        texturePath: metalWallTexture,
+      },
     ],
     hard: [
       {
-        id: 'detective_hard_1', 
+        id: 'detective_hard_1',
         name: 'The Cold Case Vault',
         difficulty: 'hard',
         mind: 'detective',
-        layout: generateMaze(34, 0.32)
+        layout: generateMaze(16, 0.18),
+        texturePath: metalWallTexture,
       },
       {
         id: 'detective_hard_2',
-        name: 'The Sherlock\'s Mind',
+        name: "The Sherlock's Mind",
         difficulty: 'hard',
         mind: 'detective',
-        layout: generateMaze(40, 0.28)
-      }
-    ]
-  }
+        layout: generateMaze(20, 0.15),
+        texturePath: metalWallTexture,
+      },
+    ],
+  },
 };
 
+
 export function getMazes(mind: MindType, difficulty: Difficulty): MazeConfig[] {
-  return MAZE_TEMPLATES[mind][difficulty];
+  return MAZE_TEMPLATES[mind][difficulty] || [];
 }
 
 export function getMaze(mazeId: string): MazeConfig | null {

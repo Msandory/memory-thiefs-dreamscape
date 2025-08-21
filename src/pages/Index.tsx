@@ -1,16 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Howl } from "howler";
 import { MainMenu } from "@/components/MainMenu";
-import { GameCanvas } from "@/components/GameCanvas";
+import { GameCanvas3D } from "@/components/GameCanvas3D";
 import { GameHUD } from "@/components/GameHUD";
+import { MinimapContainer } from "@/components/MinimapContainer";
 import { PauseMenu } from "@/components/PauseMenu";
 import { GameOverScreen } from "@/components/GameOverScreen";
 import { InstructionsScreen } from "@/components/InstructionsScreen";
+import { MobileControls } from "@/components/MobileControls"; 
+import { RotationPrompt } from "@/components/RotationPrompt";
+import { Joystick } from 'react-joystick-component';
 import { toast } from "sonner";
 import backgroundMusic from '@/assets/audio/background-music.mp3';
 import React from "react";
 import { Difficulty, MindType } from '@/config/gameConfig';
-
+import screenfull from 'screenfull';
 type GameState = 'menu' | 'instructions' | 'playing' | 'paused' | 'gameOver' | 'victory';
 
 interface SavedGameState {
@@ -18,92 +22,6 @@ interface SavedGameState {
   // ... other saved state properties
 }
 
-const VirtualArrowKeys = ({ onMove, onSpacePress }: { onMove: (dir: { up: boolean, down: boolean, left: boolean, right: boolean }) => void; onSpacePress: () => void }) => {
-  const [direction, setDirection] = useState({ up: false, down: false, left: false, right: false });
-
-  // Handle button press (touch start or mouse down)
-  const handlePress = (key: keyof typeof direction) => {
-    setDirection((prev) => {
-      const newDirection = { ...prev, [key]: true };
-      onMove(newDirection);
-      return newDirection;
-    });
-  };
-
-  // Handle button release (touch end or mouse up)
-  const handleRelease = (key: keyof typeof direction) => {
-    setDirection((prev) => {
-      const newDirection = { ...prev, [key]: false };
-      onMove(newDirection);
-      return newDirection;
-    });
-  };
-
-  return (
-    <div className="fixed bottom-12 left-1/2 transform -translate-x-1/2 grid grid-cols-4 grid-rows-2 gap-3 w-60 h-36 z-40">
-      {/* Up Button */}
-      <div className="col-start-2 row-start-1">
-        <button
-          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
-          onTouchStart={() => handlePress('up')}
-          onTouchEnd={() => handleRelease('up')}
-          onMouseDown={() => handlePress('up')}
-          onMouseUp={() => handleRelease('up')}
-        >
-          ↑
-        </button>
-      </div>
-      {/* Left Button */}
-      <div className="col-start-1 row-start-2">
-        <button
-          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
-          onTouchStart={() => handlePress('left')}
-          onTouchEnd={() => handleRelease('left')}
-          onMouseDown={() => handlePress('left')}
-          onMouseUp={() => handleRelease('left')}
-        >
-          ←
-        </button>
-      </div>
-      {/* Right Button */}
-      <div className="col-start-3 row-start-2">
-        <button
-          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
-          onTouchStart={() => handlePress('right')}
-          onTouchEnd={() => handleRelease('right')}
-          onMouseDown={() => handlePress('right')}
-          onMouseUp={() => handleRelease('right')}
-        >
-          →
-        </button>
-      </div>
-      {/* Down Button */}
-      <div className="col-start-2 row-start-2">
-        <button
-          className="w-14 h-14 bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-2xl"
-          onTouchStart={() => handlePress('down')}
-          onTouchEnd={() => handleRelease('down')}
-          onMouseDown={() => handlePress('down')}
-          onMouseUp={() => handleRelease('down')}
-        >
-          ↓
-        </button>
-      </div>
-      {/* Space Button */}
-      <div className="col-start-4 row-start-1 row-span-2">
-        <button
-          className="w-14 h-[116px] bg-slate-400/50 backdrop-blur-sm rounded-lg flex items-center justify-center touch-none text-xl"
-          onTouchStart={onSpacePress}
-          onTouchEnd={(e) => e.preventDefault()} // Prevent default to avoid scrolling
-          onMouseDown={onSpacePress}
-          onMouseUp={(e) => e.preventDefault()}
-        >
-          SPACE
-        </button>
-      </div>
-    </div>
-  );
-};
 
 const Index = () => {
   const [gameState, setGameState] = useState<GameState>('menu');
@@ -116,12 +34,22 @@ const Index = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [mobileDirection, setMobileDirection] = useState({ up: false, down: false, left: false, right: false });
+ // const [mobileDirection, setMobileDirection] = useState({ up: false, down: false, left: false, right: false });
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [selectedMind, setSelectedMind] = useState<MindType>('scholar');
   const [selectedMazeId, setSelectedMazeId] = useState('scholar_medium_1');
-
-  const gameCanvasRef = useRef<{ reset: () => void; retry: () => void; useThunder: () => void }>(null);
+  const [gameSettings, setGameSettings] = useState({
+    mouseSensitivity: 1.0,
+    mouseInvert: false
+  });
+ 
+  const [selectedTexturePath, setSelectedTexturePath] = useState('');
+  const gameCanvasRef = useRef<{ 
+    reset: () => void; 
+    retry: () => void; 
+    useThunder: () => void;
+    updateLookRotation: (dx: number | null, dy: number | null) => void;
+  }>(null);
   const backgroundMusicRef = useRef<Howl | null>(null);
   
   useEffect(() => { setIsMobile(/Mobi|Android/i.test(navigator.userAgent) || window.innerWidth < 768); }, []);
@@ -144,7 +72,10 @@ const Index = () => {
   useEffect(() => { localStorage.setItem('muted', JSON.stringify(muted)); }, [muted]);
   useEffect(() => { localStorage.setItem('playerName', playerName); }, [playerName]);
 
-  const handleStartGame = useCallback((name: string, selectedDifficulty: Difficulty, mind: MindType, mazeId: string) => {
+  const handleStartGame = useCallback((name: string, selectedDifficulty: Difficulty, mind: MindType, mazeId: string,texturePath:string) => {
+    if (isMobile && screenfull.isEnabled) {
+      screenfull.request(); // This makes the entire page go full screen
+    }
     setPlayerName(name);
     setDifficulty(selectedDifficulty);
     setSelectedMind(mind);
@@ -157,6 +88,7 @@ const Index = () => {
     setTimerActive(false);
     setGameMessage(`${name}, you feel the ancient presence...`);
     gameCanvasRef.current?.reset();
+    setSelectedTexturePath(texturePath);
   }, []);
 
   const handleGameStateChange = useCallback((state: 'playing' | 'paused' | 'gameOver' | 'victory') => {
@@ -196,6 +128,8 @@ const Index = () => {
   const handleTimerUpdate = useCallback((time: number) => setTimeRemaining(time), []);
   const handleTimerActive = useCallback((isActive: boolean) => setTimerActive(isActive), []);
   const handleLevelChange = useCallback((level: number) => setCurrentLevel(level), []);
+  const [isThirdPerson, setIsThirdPerson] = useState(true); 
+
 
   // NEW: Callback to trigger useThunder from GameCanvas
   const handleSpacePress = useCallback(() => {
@@ -204,8 +138,52 @@ const Index = () => {
     }
   }, []);
 
+  // CHANGE: New handler to toggle the view from mobile controls
+  const handleToggleView = useCallback(() => {
+    setIsThirdPerson(prev => !prev);
+  }, []);
+
+  // CHANGE: Joystick move handler to simulate key presses
+  const handleJoystickMove = useCallback((e: any)  => {
+    const threshold = 0.3;
+    // Simulate W (forward) and S (backward)
+    if (e.y !== null) {
+      if (e.y > threshold) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }));
+      else window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w' }));
+      
+      if (e.y < -threshold) window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }));
+      else window.dispatchEvent(new KeyboardEvent('keyup', { key: 's' }));
+    }
+    // Simulate A (left) and D (right)
+    if (e.x !== null) {
+      if (e.x < -threshold) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+      else window.dispatchEvent(new KeyboardEvent('keyup', { key: 'a' }));
+      
+      if (e.x > threshold) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }));
+      else window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd' }));
+    }
+  }, []);
+
+  // CHANGE: Joystick stop handler to release all keys
+  const handleJoystickStop = useCallback(() => {
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w' }));
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'a' }));
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 's' }));
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd' }));
+  }, []);
+
+  const handleLookJoystickMove = useCallback((e: any) => {
+    // Pass the raw x and y from the joystick to the game canvas
+    // The null check prevents sending data when the stick is released
+    if (gameCanvasRef.current) {
+        gameCanvasRef.current.updateLookRotation(e.x, e.y);
+    }
+  }, []);
   return (
     <div className="min-h-screen w-screen h-screen relative overflow-hidden bg-background">
+      {/* CHANGE: Add the rotation prompt for mobile devices */}
+      {isMobile && <RotationPrompt />}
+
       {gameState === 'menu' && (
         <MainMenu onStartGame={handleStartGame} onShowInstructions={() => setGameState('instructions')} muted={muted} savedPlayerName={playerName} onClearPlayerName={handleClearPlayerName} />
       )}
@@ -216,8 +194,8 @@ const Index = () => {
       
       {(gameState === 'playing' || gameState === 'paused' || gameState === 'gameOver' || gameState === 'victory') && (
         <div className="w-full h-full flex items-center justify-center p-1 sm:p-4">
-          <div className="relative aspect-[4/3] w-full max-w-5xl max-h-full">
-            <GameCanvas
+          <div className="relative w-full h-screen max-w-none">
+            <GameCanvas3D
               ref={gameCanvasRef}
               isActive={gameState === 'playing'}
               onGameStateChange={handleGameStateChange}
@@ -229,11 +207,16 @@ const Index = () => {
               onTimerUpdate={handleTimerUpdate}
               onTimerActive={handleTimerActive}
               onLevelChange={handleLevelChange}
-              mobileDirection={mobileDirection}
+              // mobileDirection is no longer needed
               difficulty={difficulty}
               mind={selectedMind}
               mazeId={selectedMazeId}
               onScoreUpdate={setScore}
+              gameSettings={gameSettings}
+              onSettingsChange={setGameSettings}
+              texturePath={selectedTexturePath}
+              thirdPerson={isThirdPerson}
+              onToggleThirdPerson={setIsThirdPerson}
             />
             <GameHUD
               memoriesCollected={memoriesCollected}
@@ -249,8 +232,17 @@ const Index = () => {
               currentLevel={currentLevel}
               totalMemories={2 + (currentLevel - 1)}
             />
+            <MinimapContainer gameCanvasRef={gameCanvasRef} isThirdPerson={isThirdPerson} />
+          
             {gameState === 'paused' && (
-              <PauseMenu onResume={() => setGameState('playing')} onRestart={handleRestart} onMainMenu={handleMainMenu} muted={muted} />
+              <PauseMenu 
+                onResume={() => setGameState('playing')} 
+                onRestart={handleRestart} 
+                onMainMenu={handleMainMenu} 
+                muted={muted} 
+                gameSettings={gameSettings}
+                onSettingsChange={setGameSettings}
+              />
             )}
             {(gameState === 'gameOver' || gameState === 'victory') && (
               <GameOverScreen 
@@ -264,8 +256,16 @@ const Index = () => {
               />
             )}
           </div>
+          {/* CHANGE: Replace VirtualArrowKeys with MobileControls */}
           {isMobile && gameState === 'playing' && (
-            <VirtualArrowKeys onMove={setMobileDirection} onSpacePress={handleSpacePress} />
+            <MobileControls
+              onMove={handleJoystickMove}
+              onStop={handleJoystickStop}
+              onSpacePress={handleSpacePress}
+              onToggleView={handleToggleView}
+              onLookMove={handleLookJoystickMove}
+              isThirdPerson={isThirdPerson}
+            />
           )}
         </div>
       )}

@@ -1,12 +1,22 @@
 // Game Configuration
 import { ChallengeState } from '../utils/miniChallenges';
+import brickWallTexture from '@/assets/Texture/brickWallTexture.avif';
+import stoneWallTexture from '@/assets/Texture/stoneWallTexture.jpg';
+import metalWallTexture from '@/assets/Texture/marbleWallTexture.jpg';
+import glassWallTexture from '@/assets/Texture/glassWallTexture.webp';
 
-export const TILE_SIZE = 40;
+export const TILE_SIZE = 100;
 export const MAP_COLS = 20;
 export const MAP_ROWS = 15;
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type PowerUpType = 'speed' | 'immunity' | 'thunder' | 'timer';
+export enum PowerUpType {
+  Speed = 'speed',
+  Immunity = 'immunity',
+  Thunder = 'thunder', // Example: clear guardians
+  Timer = 'timer', // Example: add time
+}
+
 export type MindType = 'scholar' | 'artist' | 'detective';
 
 export interface MindConfig {
@@ -14,6 +24,7 @@ export interface MindConfig {
   description: string;
   theme: string;
   color: string;
+  texturePath: string; // Path to the wall texture
 }
 
 export interface MiniChallenge {
@@ -28,52 +39,59 @@ export interface MiniChallenge {
 
 export const MINDS: Record<MindType, MindConfig> = {
   scholar: {
-    name: "Scholar's Library",
-    description: "Navigate through ancient halls of knowledge",
+    name: 'Scholar',
+    description: 'Navigate the labyrinth of knowledge with precision.',
+  
+    texturePath: brickWallTexture,
     theme: "Academic halls with floating books and scrolls",
     color: "hsl(210, 100%, 70%)"
   },
   artist: {
-    name: "Artist's Studio", 
-    description: "Steal memories from a creative sanctuary",
+    name: 'Artist',
+    description: 'Weave through the chaos of creativity.',
+    texturePath: stoneWallTexture,
     theme: "Paint-splattered rooms with floating canvases",
     color: "hsl(300, 100%, 70%)"
   },
-  detective: {
-    name: "Detective's Office",
-    description: "Infiltrate a mind of logic and deduction", 
+  detective: { 
+    name: 'Detective',
+    description: 'Uncover clues in the maze of mystery.',
+    texturePath: metalWallTexture,
     theme: "Noir-style rooms with case files and evidence",
     color: "hsl(45, 100%, 70%)"
-  }
+  },
+ 
 };
-
 export const difficultyConfigs = {
   easy: { 
-    baseTimer: 45, 
+    baseTimer: 60, 
     timerIncrement: 3, 
-    baseGuardSpeed: 0.2, 
+    baseGuardSpeed: 5, 
     speedIncrement: 0.2, 
     initialGuards: 1, 
     guardsPerLevel: 0.5, 
-    powerUpChance: 0.8 
+    powerUpChance: 0.8,
+   
   },
   medium: { 
     baseTimer: 35, 
     timerIncrement: 2, 
-    baseGuardSpeed: 1, 
+    baseGuardSpeed: 10, 
     speedIncrement: 0.5, 
     initialGuards: 1, 
     guardsPerLevel: 1, 
-    powerUpChance: 0.6 
+    powerUpChance: 0.6,
+   
   },
   hard: { 
     baseTimer: 30, 
     timerIncrement: 1, 
-    baseGuardSpeed: 1.3, 
+    baseGuardSpeed: 13, 
     speedIncrement: 0.6, 
     initialGuards: 2, 
     guardsPerLevel: 1, 
-    powerUpChance: 0.8 
+    powerUpChance: 0.8,
+   
   },
 };
 
@@ -82,9 +100,25 @@ export const commonConfig = {
   initialOrbs: 2,
   orbsPerLevel: 0.5,
   safeDistance: 100,
-  guardianVisionRange: 100,
-  guardianVisionAngle: Math.PI / 3,
-  powerUpStartLevel: 4,
+  guardianVisionRange: 190, // Distance (in game units) guards can 'see' for the minimap cone
+  guardianVisionAngle: 190, // Dwegrees: FOV for vision cone on minimap
+  powerUpStartLevel: 1,
+  orbRadius: 20, // Collision radius for memory orbs (game units)
+  guardianRadius: 25, // Collision radius for guardians (game units) - adjusted!
+  playerRadius: 25, // Collision radius for player (game units) - adjusted!
+  guardianAlertRadius: 150, // Actual radius for guard's player detection in GameCanvas3D
+  guardianAlertSpeedMultiplier: 1.5, 
+  playerBaseSpeed: 8, // Base speed for player movement in game units
+  playerSprintMultiplier: 1.5, 
+  max_stuck_attempts: 10, // Changed from 15 to 10 for faster recovery
+  patrolDirectionChangeInterval: 2500, // Base time (ms) before considering a patrol direction change
+  patrolDirectionChangeRandomOffset: 10, // Random additional time (ms) for patrol direction change
+  powerUpEffects: {
+    speedBoostMultiplier: 1.5, 
+    timerBoost: 30, 
+    timerScoreBonus: 50,
+    otherPowerUpScoreBonus: 20,
+  }
 };
 
 export const MINI_CHALLENGES: MiniChallenge[] = [
