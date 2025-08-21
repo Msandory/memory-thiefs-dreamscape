@@ -65,6 +65,11 @@ interface Guardian {
   wasAlert: boolean; 
   directionX: number; 
   directionY: number; 
+  // NEW FIELDS for improved chase
+  pursuitEndTime: number;    // When to stop pursuing (timestamp)
+  lastKnownPlayerX: number;  // Last seen player position
+  lastKnownPlayerY: number;
+  searchRadius: number;      // How far to search around last known position
 }
 
 function Wall({ position, texturePath }: { position: [number, number, number], texturePath: string }) {
@@ -184,15 +189,21 @@ function GuardianModel({ position, alert, rotationY, guardianIndex  }: { positio
 
 
   return (
-    <group position={[position[0], 0, position[2]]} rotation={[0, rotationY, 0]}>
+    <group position={[position[0], 0, position[2]]} rotation={[0, rotationY + Math.PI, 0]}>
       <primitive object={clonedScene} scale={1.5} />
       {/* Debug collision radius */}
       <mesh position={[0, 0.1, 0]} visible={false}>
         <cylinderGeometry args={[commonConfig.guardianRadius/10, commonConfig.guardianRadius/10, 0.2, 8]} />
         <meshBasicMaterial color={alert ? "#ff0000" : "#ffff00"} transparent opacity={0.3} />
       </mesh>
+      {/* Add a red cube to see model's forward direction - remove after testing */}
+      <mesh position={[0, 2, 1]} visible={true}>
+        <boxGeometry args={[0.2, 0.2, 0.2]} />
+        <meshBasicMaterial color="red" />
+      </mesh>
     </group>
   );
+  
 }
 useGLTF.preload('/assets/3DModels/guards.glb');
 useGLTF.preload('/assets/3DModels/player1.glb');
@@ -506,7 +517,11 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   const timerStarted = useRef(false);
   const [isSpawningComplete, setIsSpawningComplete] = useState(false);
   const alertSoundPlayed = useRef(false);
-
+  const [globalAlertState, setGlobalAlertState] = useState({
+    isActive: false,
+    triggeredTime: 0,
+    alertedGuardCount: 0
+  });
   
   const getCurrentRoomLayout = useCallback(() => {
     if (currentMazeLayout.length > 0) return currentMazeLayout;
@@ -665,13 +680,16 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
 
 
   const resetGameState = useCallback(async (level: number = 1) => { 
-    alertSoundPlayed.current = false; // FIX: Reset alert sound flag for new level
+    alertSoundPlayed.current = false;
+    setGlobalAlertState({ isActive: false, triggeredTime: 0, alertedGuardCount: 0 }); // Reset global alert
     setIsLoading(true);
     setIsSpawningComplete(false);
     setActivePowerUps([]);
+    
     const config = getLevelConfig(level);
     const spawnedPositions: {x: number, y: number}[] = [];
     const minSpawnDistance = commonConfig.safeDistance || 100;
+    
     const getUniqueSafePosition = () => {
       let newPos;
       let attempts = 0;
@@ -690,9 +708,9 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       if(newPos) spawnedPositions.push(newPos);
       return newPos;
     };
-
+  
     const newPlayerPos = getUniqueSafePosition() || { x: 100, y: 100 };
-    setPlayer({ ...newPlayerPos, size: 20, rotationY: 0, lookRotationY: 0 }); 
+    setPlayer({ ...newPlayerPos, size: 20, rotationY: 0, lookRotationY: 0 });  
 
     const newOrbs: { x: number; y: number; collected: boolean; pulse: number; collectingTime: number }[] = []; 
     for (let i = 0; i < config.orbs; i++) { 
@@ -702,21 +720,26 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     setMemoryOrbs(newOrbs); 
 
     const newGuardians: Guardian[] = []; 
-    for (let i = 0; i < config.guards; i++) { 
-      const guardianPos = getUniqueSafePosition() || { x: 200 + i*10, y: 200 + i*10 };
-      newGuardians.push({ 
-        ...guardianPos, 
-        alert: false, 
-        wasAlert: false,
-        rotationY: Math.random() * Math.PI * 2, 
-        lastDirectionChange: Date.now(),
-        stuckCounter: 0,
-        directionX: 0,
-        directionY: 0,
-        patrolTimer: Date.now() + commonConfig.patrolDirectionChangeInterval + Math.random() * commonConfig.patrolDirectionChangeRandomOffset
-      }); 
-    } 
-    guardians.current = newGuardians; 
+  for (let i = 0; i < config.guards; i++) { 
+    const guardianPos = getUniqueSafePosition() || { x: 200 + i*10, y: 200 + i*10 };
+    newGuardians.push({ 
+      ...guardianPos, 
+      alert: false, 
+      wasAlert: false,
+      rotationY: Math.random() * Math.PI * 2, 
+      lastDirectionChange: Date.now(),
+      stuckCounter: 0,
+      directionX: 0,
+      directionY: 0,
+      patrolTimer: Date.now() + commonConfig.patrolDirectionChangeInterval + Math.random() * commonConfig.patrolDirectionChangeRandomOffset,
+      // NEW FIELDS
+      pursuitEndTime: 0,
+      lastKnownPlayerX: guardianPos.x,
+      lastKnownPlayerY: guardianPos.y,
+      searchRadius: 0
+    }); 
+  } 
+  guardians.current = newGuardians;
 
     const newPowerUps: SpawnedPowerUp[] = [];
     if (Math.random() < config.powerUpChance) {
@@ -998,6 +1021,38 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     return () => clearInterval(moveInterval);
   }, [isActive, gameState, memoryOrbs, powerUps, player, handleOrbClick, handlePowerUpClick, checkCollision, cameraRotationRef, onPlayerPositionUpdate, onPlayerLookRotationUpdate, thirdPerson, activePowerUps, muted, commonConfig, TILE_SIZE]); 
 
+  const checkGuardianPlayerCollision = useCallback((guardX: number, guardY: number, playerX: number, playerY: number) => {
+    const dx = guardX - playerX;
+    const dy = guardY - playerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // More generous collision threshold - increased significantly
+    const collisionThreshold = (commonConfig.playerRadius + commonConfig.guardianRadius) * 1.5; // Increased from 1.2
+    
+    // Multiple collision checks for better detection
+    const checkPoints = [
+      { x: guardX, y: guardY }, // Center
+      { x: guardX + commonConfig.guardianRadius * 0.7, y: guardY }, // Right
+      { x: guardX - commonConfig.guardianRadius * 0.7, y: guardY }, // Left
+      { x: guardX, y: guardY + commonConfig.guardianRadius * 0.7 }, // Front
+      { x: guardX, y: guardY - commonConfig.guardianRadius * 0.7 }  // Back
+    ];
+    
+    // Check if any point of the guard is close enough to player
+    for (const point of checkPoints) {
+      const pointDx = point.x - playerX;
+      const pointDy = point.y - playerY;
+      const pointDistance = Math.sqrt(pointDx * pointDx + pointDy * pointDy);
+      
+      if (pointDistance < collisionThreshold) {
+        console.log(`COLLISION DETECTED! Distance: ${pointDistance.toFixed(2)}, Threshold: ${collisionThreshold.toFixed(2)}`);
+        return true;
+      }
+    }
+    
+    return false;
+  }, [commonConfig.playerRadius, commonConfig.guardianRadius]);
+  
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
     
@@ -1006,65 +1061,136 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
       const config = getLevelConfig(currentLevel);
       const currentTime = Date.now();
       
-      let wasChanged = false; // Track if any guardian state changed to trigger a render
+      let wasChanged = false;
+      let anyGuardCanSeePlayer = false;
+      
+      // PHASE 1: Check which guards can see the player
       guardians.current.forEach((guardian) => {
-        const originalState = { ...guardian }; // Snapshot state for change detection
-
         const dx = player.x - guardian.x;
         const dy = player.y - guardian.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const alertRadius = commonConfig.guardianAlertRadius;
-        const calmRadius = commonConfig.guardianAlertRadius * 1.5;
-        if (guardian.alert) {
-          // Already alert → only calm down if player is far enough
-          if (distance > calmRadius) {
-            guardian.alert = false;
-          }
-        } else {
-          // Not alert yet → trigger if close enough
-          if (distance < alertRadius) {
-            guardian.alert = true;
-          }
+        
+        if (distance < alertRadius) {
+          anyGuardCanSeePlayer = true;
+          guardian.lastKnownPlayerX = player.x;
+          guardian.lastKnownPlayerY = player.y;
+          guardian.pursuitEndTime = currentTime + 3000; // 3 second pursuit timer
         }
+      });
   
-        if (alertRadius && guardian.wasAlert) {
-          if (!alertSoundPlayed.current) {
-            if (soundsRef.current && !muted) soundsRef.current.guardianAlert.play();
-            alertSoundPlayed.current = true;
-          }
+      // PHASE 2: Update global alert state and trigger group response
+      if (anyGuardCanSeePlayer && !globalAlertState.isActive) {
+        // First guard spotted player - trigger global alert
+        setGlobalAlertState({
+          isActive: true,
+          triggeredTime: currentTime,
+          alertedGuardCount: guardians.current.length
+        });
+        
+        // Play alert sound once
+        if (soundsRef.current && !muted) {
+          soundsRef.current.guardianAlert.play();
         }
-        guardian.wasAlert = guardian.alert;
+        
+        // Set all guards to alert with slight delay for realism
+        guardians.current.forEach((guardian, index) => {
+          setTimeout(() => {
+            guardian.alert = true;
+            guardian.pursuitEndTime = Math.max(guardian.pursuitEndTime, currentTime + 3000);
+          }, index * 200); // 200ms delay between each guard
+        });
+      }
+  
+      // PHASE 3: Individual guard behavior
+      guardians.current.forEach((guardian) => {
+        const originalState = { ...guardian };
+        const dx = player.x - guardian.x;
+        const dy = player.y - guardian.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+  
+        // IMPROVED ALERT STATE MANAGEMENT
+        const canSeePlayer = distance < commonConfig.guardianAlertRadius;
+        const shouldStopPursuit = currentTime > guardian.pursuitEndTime && !canSeePlayer;
+  
+        if (canSeePlayer) {
+          // Can see player - stay alert and update pursuit timer
+          guardian.alert = true;
+          guardian.pursuitEndTime = currentTime + 3000;
+          guardian.lastKnownPlayerX = player.x;
+          guardian.lastKnownPlayerY = player.y;
+        } else if (shouldStopPursuit) {
+          // Lost player and pursuit timer expired
+          guardian.alert = false;
+        }
+        // If can't see player but pursuit timer hasn't expired, stay alert
   
         let newX = guardian.x;
         let newY = guardian.y;
         const guardianRadius = commonConfig.guardianRadius;
         let angle = guardian.rotationY;
   
-        if (alertRadius) {
-          const chaseSpeed = config.guardSpeed * 1.5;
-          const targetAngle = Math.atan2(dy, dx);
+        if (guardian.alert) {
+          // CHASE/SEARCH BEHAVIOR
+          let targetX, targetY;
           
+          if (canSeePlayer) {
+            // Can see player - chase directly
+            targetX = player.x;
+            targetY = player.y;
+          } else {
+            // Lost sight - go to last known position
+            targetX = guardian.lastKnownPlayerX;
+            targetY = guardian.lastKnownPlayerY;
+          }
+  
+          const targetDx = targetX - guardian.x;
+          const targetDy = targetY - guardian.y;
+          const targetAngle = Math.atan2(targetDx, targetDy);
+          
+          // IMPROVED TURNING - even faster when in pursuit
           let angleDiff = targetAngle - angle;
           if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
           if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
           
-          const turnSpeed = 0.01;
+          const turnSpeed = canSeePlayer ? 0.12 : 0.08; // Faster turning when can see player
           angle += angleDiff * turnSpeed;
           
-          const chaseX = Math.sin(angle) * chaseSpeed;
-          const chaseY = Math.cos(angle) * chaseSpeed;
+          // MOVEMENT
+          const chaseSpeed = config.guardSpeed * (canSeePlayer ? 1.3 : 1.0); // Faster when can see player
+          const chaseX = -Math.sin(angle) * chaseSpeed;
+          const chaseY = -Math.cos(angle) * chaseSpeed;
           
-          if (!checkCollision(newX + chaseX, newY + chaseY, guardianRadius)) {
+          // Check collision along movement path
+          let canMove = true;
+          for (let i = 0; i <= 3; i++) {
+            const checkX = newX + (chaseX * i / 3);
+            const checkY = newY + (chaseY * i / 3);
+            if (checkCollision(checkX, checkY, guardianRadius)) {
+              canMove = false;
+              break;
+            }
+          }
+          
+          if (canMove) {
             newX += chaseX;
             newY += chaseY;
             guardian.stuckCounter = 0;
           } else {
-            const avoidAngles = [angle + Math.PI/4, angle - Math.PI/4, angle + Math.PI/2, angle - Math.PI/2];
-            let moved = false;
+            // OBSTACLE AVOIDANCE with better angles
+            const avoidAngles = [
+              targetAngle + Math.PI/4,
+              targetAngle - Math.PI/4,
+              targetAngle + Math.PI/3,
+              targetAngle - Math.PI/3,
+              targetAngle + Math.PI/2,
+              targetAngle - Math.PI/2
+            ];
             
+            let moved = false;
             for (const avoidAngle of avoidAngles) {
-              const avoidX = Math.sin(avoidAngle) * chaseSpeed * 0.7;
-              const avoidY = Math.cos(avoidAngle) * chaseSpeed * 0.7;
+              const avoidX = -Math.sin(avoidAngle) * chaseSpeed * 0.8;
+              const avoidY = -Math.cos(avoidAngle) * chaseSpeed * 0.8;
               
               if (!checkCollision(newX + avoidX, newY + avoidY, guardianRadius)) {
                 newX += avoidX;
@@ -1079,6 +1205,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
             if (!moved) guardian.stuckCounter++;
           }
         } else {
+          // PATROL BEHAVIOR (unchanged)
           const patrolSpeed = config.guardSpeed * 0.6;
           
           const timeSinceLastChange = currentTime - guardian.lastDirectionChange;
@@ -1118,14 +1245,15 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           if (!checkCollision(newX + moveX, newY + moveY, guardianRadius)) {
             newX += moveX;
             newY += moveY;
-            angle = Math.atan2(guardian.directionX, guardian.directionY);
+            angle = Math.atan2(guardian.directionX, guardian.directionY) + Math.PI;
             guardian.stuckCounter = Math.max(0, guardian.stuckCounter - 1);
           } else {
             guardian.stuckCounter++;
           }
         }
   
-        if (guardian.stuckCounter > 8) {
+        // Anti-stuck teleport
+        if (guardian.stuckCounter > 5) {
           console.warn(`Guardian is stuck, teleporting.`);
           const safePos = getRandomSafePosition();
           newX = safePos.x;
@@ -1134,42 +1262,47 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           guardian.lastDirectionChange = currentTime;
         }
   
+        // Update guardian position
         guardian.x = newX;
         guardian.y = newY;
-       // guardian.alert = isAlert;
         guardian.rotationY = angle;
   
-        // FIX: Player capture check using config values and stopping game state
-        const catchDistance = Math.sqrt((newX - player.x) ** 2 + (newY - player.y) ** 2);
-        const collisionThreshold = commonConfig.playerRadius + commonConfig.guardianRadius;
-        if (catchDistance < collisionThreshold) {
+        // IMPROVED COLLISION CHECK with detailed logging
+        if (checkGuardianPlayerCollision(newX, newY, player.x, player.y)) {
+          console.log("🚨 GAME OVER - Player caught by guardian!");
+          console.log(`Guardian position: (${newX.toFixed(1)}, ${newY.toFixed(1)})`);
+          console.log(`Player position: (${player.x.toFixed(1)}, ${player.y.toFixed(1)})`);
+          console.log(`Distance: ${Math.sqrt((newX - player.x) ** 2 + (newY - player.y) ** 2).toFixed(2)}`);
+          
           onGameStateChange('gameOver');
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, timeRemaining, difficulty, score, mind);
-          setGameState('idle'); // Crucial: Stop game updates
+          setGameState('idle');
+          return;
         }
-
-        // Check if anything changed to warrant a re-render
-        if (guardian.x !== originalState.x || guardian.y !== originalState.y || guardian.alert !== originalState.alert || guardian.rotationY !== originalState.rotationY) {
-            wasChanged = true;
+  
+        // Check for changes
+        if (guardian.x !== originalState.x || guardian.y !== originalState.y || 
+            guardian.alert !== originalState.alert || guardian.rotationY !== originalState.rotationY) {
+          wasChanged = true;
         }
       });
   
-      const anyAlert = guardians.current.some(g => g.alert);
-      if (!anyAlert) {
-        alertSoundPlayed.current = false;
+      // Reset global alert if no guards are alert anymore
+      if (globalAlertState.isActive && !guardians.current.some(g => g.alert)) {
+        setGlobalAlertState({ isActive: false, triggeredTime: 0, alertedGuardCount: 0 });
       }
   
       if (wasChanged) {
         setRenderTrigger(prev => prev + 1);
       }
       
-    }, 32); 
+    }, 16);
     
     return () => clearInterval(guardianInterval);
   }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig, 
       onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, 
-      checkCollision, getRandomSafePosition]);
+      checkCollision, getRandomSafePosition, checkGuardianPlayerCollision, globalAlertState]);
 
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
