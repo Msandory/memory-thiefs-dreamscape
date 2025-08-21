@@ -87,11 +87,26 @@ function Wall({ position, texturePath }: { position: [number, number, number], t
 }
 
 type PlayerGLTFResult = GLTF & { animations: THREE.AnimationClip[]; };
-function PlayerModel({ position, visible, isSprinting, isMoving, rotationY }: 
-  { position: [number, number, number], visible: boolean, isSprinting: boolean, isMoving: boolean, rotationY: number }) {
+// CHANGE 1: Added activePowerUps prop to PlayerModel for glow effect
+function PlayerModel({ position, visible, isSprinting, isMoving, rotationY, activePowerUps }: 
+  { position: [number, number, number], visible: boolean, isSprinting: boolean, isMoving: boolean, rotationY: number, activePowerUps: ActivePowerUp[] }) {
   const { scene, animations } = useGLTF('/assets/3DModels/player1.glb') as PlayerGLTFResult;
   const { actions } = useAnimations(animations, scene);
   const currentAction = useRef<THREE.AnimationAction | null>(null);
+
+  // CHANGE 1: Determine if a glow should be active and what color it should be.
+  const glow = useMemo(() => {
+    const immunity = activePowerUps.find(p => p.type === PowerUpType.Immunity);
+    const thunder = activePowerUps.find(p => p.type === PowerUpType.Thunder);
+
+    if (immunity) {
+      return { color: '#FFD700', intensity: 9.5, distance: 4 }; // Gold glow for immunity
+    }
+    if (thunder) {
+      return { color: '#00CCFF', intensity: 9.5, distance: 4 }; // Blue glow for thunder
+    }
+    return null;
+  }, [activePowerUps]);
 
   useEffect(() => {
     const idle = actions['Idle'] || actions['idle'];
@@ -122,6 +137,8 @@ function PlayerModel({ position, visible, isSprinting, isMoving, rotationY }:
   return (
     <group position={[position[0], 0, position[2]]} rotation={[0, rotationY, 0]} visible={visible}>
       <primitive object={scene} scale={1.5} />
+      {/* CHANGE 1: Render the point light if a glow is active */}
+      {glow && <pointLight color={glow.color} intensity={glow.intensity} distance={glow.distance} position={[0, 1, 0]} />}
     </group>
   );
 }
@@ -260,7 +277,8 @@ function GameScene({
   thirdPerson,
   isSprinting,
   cameraRotationRef,
-  texturePath
+  texturePath,
+  activePowerUps // CHANGE 1: Receive activePowerUps
 }: { 
   playerPosition: [number, number, number],
   memoryOrbs: Array<{ x: number; y: number; collected: boolean; pulse: number }>,
@@ -276,7 +294,8 @@ function GameScene({
   thirdPerson: boolean,
   isSprinting?: boolean,
   cameraRotationRef: React.MutableRefObject<{ x: number; y: number }>,
-  texturePath: string
+  texturePath: string,
+  activePowerUps: ActivePowerUp[] // CHANGE 1: Add to props interface
   }) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
@@ -422,6 +441,7 @@ function GameScene({
         isSprinting={isSprinting} 
         isMoving={playerMovement.isMoving}
         rotationY={cameraRotationRef.current.y}
+        activePowerUps={activePowerUps} // CHANGE 1: Pass prop to PlayerModel
       />
       {/* Player Collision Radius Visual */}
       <mesh position={[playerPosition[0], 0.01, playerPosition[2]]}>
@@ -683,6 +703,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     alertSoundPlayed.current = false;
     setGlobalAlertState({ isActive: false, triggeredTime: 0, alertedGuardCount: 0 }); // Reset global alert
     setIsLoading(true);
+    // CHANGE 2: Reset player movement state at the beginning of a new level
+    setPlayerMovement({ isMoving: false, isRunningFast: false });
     setIsSpawningComplete(false);
     setActivePowerUps([]);
     
@@ -783,7 +805,9 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
         onGameStateChange('victory');
         if (soundsRef.current && !muted) soundsRef.current.victory.play();
         saveScore(playerName, timeRemaining, difficulty, score, mind);
-        setGameState('idle'); 
+        setGameState('idle');
+        // CHANGE 2: Reset player movement state on victory
+        setPlayerMovement({ isMoving: false, isRunningFast: false });
       }
     }
   }, [memoryOrbs, gameState, onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, currentLevel, onLevelChange, resetGameState, isSpawningComplete]);
@@ -1054,7 +1078,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
   }, [commonConfig.playerRadius, commonConfig.guardianRadius]);
   
   useEffect(() => {
-    if (!isActive || gameState !== 'playing') return;
+    // CHANGE 3: Added isSpawningComplete to prevent guardian logic from running during level setup.
+    if (!isActive || gameState !== 'playing' || !isSpawningComplete) return;
     
     const guardianInterval = setInterval(() => {
       const currentMap = getCurrentRoomLayout();
@@ -1158,8 +1183,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           
           // MOVEMENT
           const chaseSpeed = config.guardSpeed * (canSeePlayer ? 1.3 : 1.0); // Faster when can see player
-          const chaseX = -Math.sin(angle) * chaseSpeed;
-          const chaseY = -Math.cos(angle) * chaseSpeed;
+          const chaseX = Math.sin(angle) * chaseSpeed;
+          const chaseY = Math.cos(angle) * chaseSpeed;
           
           // Check collision along movement path
           let canMove = true;
@@ -1278,6 +1303,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, timeRemaining, difficulty, score, mind);
           setGameState('idle');
+          // CHANGE 2: Reset player movement state on game over
+          setPlayerMovement({ isMoving: false, isRunningFast: false });
           return;
         }
   
@@ -1302,7 +1329,9 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
     return () => clearInterval(guardianInterval);
   }, [isActive, gameState, getCurrentRoomLayout, player, currentLevel, getLevelConfig, 
       onGameStateChange, muted, playerName, timeRemaining, difficulty, score, mind, 
-      checkCollision, getRandomSafePosition, checkGuardianPlayerCollision, globalAlertState]);
+      checkCollision, getRandomSafePosition, checkGuardianPlayerCollision, globalAlertState, 
+      isSpawningComplete // CHANGE 3: Add isSpawningComplete to dependency array
+    ]);
 
   useEffect(() => {
     if (!isActive || gameState !== 'playing') return;
@@ -1316,6 +1345,8 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           if (soundsRef.current && !muted) soundsRef.current.gameOver.play();
           saveScore(playerName, prev, difficulty, score, mind);
           setGameState('idle'); 
+          // CHANGE 2: Reset player movement state on game over
+          setPlayerMovement({ isMoving: false, isRunningFast: false });
           clearInterval(id); 
         }
         return next;
@@ -1377,6 +1408,7 @@ export const GameCanvas3D = forwardRef<any, GameCanvasProps>(({
           isSprinting={sprintingRef.current}
           cameraRotationRef={cameraRotationRef} 
           texturePath={texturePath} 
+          activePowerUps={activePowerUps} // CHANGE 1: Pass activePowerUps to GameScene
         />
       </Canvas>
       <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded-lg text-sm max-w-xs">

@@ -79,21 +79,131 @@ function generateMaze(complexity: number, density: number): number[][] {
     }
   }
 
-  // Create main corridors first for better connectivity
-  createMainCorridors(maze);
+  // Create wide main corridors first for better navigation
+  createWideMainCorridors(maze);
   
-  // Then use Prim's algorithm for organic branching
-  generateOrganicPaths(maze, complexity, density);
+  // Create open rooms instead of narrow passages
+  createOpenRooms(maze);
   
-  // Ensure minimum path width of 1 tile for easier navigation
-  ensureMinimumPathWidth(maze);
+  // Add minimal connecting paths with reduced complexity
+  generateSimplePaths(maze, Math.min(complexity * 0.3, 8), density * 0.8);
   
-  // Final connectivity check and fix
+  // Ensure wide path areas
+  expandNarrowPaths(maze);
+  
+  // Final connectivity check
   ensureFullConnectivity(maze);
   
   return maze;
 }
+function createWideMainCorridors(maze: number[][]) {
+  const midRow = Math.floor(MAP_ROWS / 2);
+  const midCol = Math.floor(MAP_COLS / 2);
+  
+  // Create wide horizontal corridor (3 tiles high)
+  for (let c = 1; c < MAP_COLS - 1; c++) {
+    maze[midRow - 1][c] = 0;
+    maze[midRow][c] = 0;
+    maze[midRow + 1][c] = 0;
+  }
+  
+  // Create wide vertical corridor (3 tiles wide)
+  for (let r = 1; r < MAP_ROWS - 1; r++) {
+    maze[r][midCol - 1] = 0;
+    maze[r][midCol] = 0;
+    maze[r][midCol + 1] = 0;
+  }
+}
 
+function createOpenRooms(maze: number[][]) {
+  const rooms = [
+    // Top-left room
+    { startR: 2, endR: 5, startC: 2, endC: 6 },
+    // Top-right room
+    { startR: 2, endR: 5, startC: MAP_COLS - 7, endC: MAP_COLS - 3 },
+    // Bottom-left room
+    { startR: MAP_ROWS - 6, endR: MAP_ROWS - 3, startC: 2, endC: 6 },
+    // Bottom-right room
+    { startR: MAP_ROWS - 6, endR: MAP_ROWS - 3, startC: MAP_COLS - 7, endC: MAP_COLS - 3 },
+  ];
+
+  for (const room of rooms) {
+    for (let r = room.startR; r <= room.endR; r++) {
+      for (let c = room.startC; c <= room.endC; c++) {
+        if (r < MAP_ROWS - 1 && c < MAP_COLS - 1) {
+          maze[r][c] = 0;
+        }
+      }
+    }
+  }
+}
+function generateSimplePaths(maze: number[][], complexity: number, density: number) {
+  // Greatly reduced complexity - focus on simple, wide paths
+  for (let i = 0; i < complexity; i++) {
+    if (Math.random() < density) {
+      const row = Math.floor(Math.random() * (MAP_ROWS - 6)) + 3;
+      const col = Math.floor(Math.random() * (MAP_COLS - 6)) + 3;
+      
+      // Create 2x2 open areas instead of single tiles
+      if (maze[row][col] === 1 && maze[row][col + 1] === 1 && 
+          maze[row + 1][col] === 1 && maze[row + 1][col + 1] === 1) {
+        
+        // Only add if it connects to existing paths reasonably
+        let nearbyPaths = 0;
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const nr = row + dr;
+            const nc = col + dc;
+            if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS && maze[nr][nc] === 0) {
+              nearbyPaths++;
+            }
+          }
+        }
+        
+        // Only create the area if there are paths nearby but not too many
+        if (nearbyPaths >= 3 && nearbyPaths <= 8) {
+          maze[row][col] = 0;
+          maze[row][col + 1] = 0;
+          maze[row + 1][col] = 0;
+          maze[row + 1][col + 1] = 0;
+        }
+      }
+    }
+  }
+}
+function expandNarrowPaths(maze: number[][]) {
+  const expansions: [number, number][] = [];
+  
+  // Find narrow path areas and mark them for expansion
+  for (let r = 2; r < MAP_ROWS - 2; r++) {
+    for (let c = 2; c < MAP_COLS - 2; c++) {
+      if (maze[r][c] === 0) {
+        // Check if this is a narrow corridor (surrounded by walls on opposite sides)
+        const hasVerticalWalls = (maze[r][c - 1] === 1 && maze[r][c + 1] === 1);
+        const hasHorizontalWalls = (maze[r - 1][c] === 1 && maze[r + 1][c] === 1);
+        
+        if (hasVerticalWalls || hasHorizontalWalls) {
+          // Expand by removing adjacent walls
+          if (hasVerticalWalls && Math.random() > 0.4) {
+            if (maze[r][c - 1] === 1) expansions.push([r, c - 1]);
+            if (maze[r][c + 1] === 1) expansions.push([r, c + 1]);
+          }
+          if (hasHorizontalWalls && Math.random() > 0.4) {
+            if (maze[r - 1][c] === 1) expansions.push([r - 1, c]);
+            if (maze[r + 1][c] === 1) expansions.push([r + 1, c]);
+          }
+        }
+      }
+    }
+  }
+  
+  // Apply expansions
+  for (const [r, c] of expansions) {
+    if (r > 0 && r < MAP_ROWS - 1 && c > 0 && c < MAP_COLS - 1) {
+      maze[r][c] = 0;
+    }
+  }
+}
 function createMainCorridors(maze: number[][]) {
   const midRow = Math.floor(MAP_ROWS / 2);
   const midCol = Math.floor(MAP_COLS / 2);
@@ -341,7 +451,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Study Hall',
         difficulty: 'easy',
         mind: 'scholar',
-        layout: generateMaze(15, 0.6),
+        layout: generateMaze(5, 0.3), // Much reduced complexity
         texturePath: brickWallTexture,
       },
     ],
@@ -375,7 +485,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Knowledge Labyrinth',
         difficulty: 'medium',
         mind: 'scholar',
-        layout: generateMaze(20, 0.35), // Reduced complexity for better navigation
+        layout: generateMaze(8, 0.25), // Reduced complexity
         texturePath: brickWallTexture,
       },
     ],
@@ -409,7 +519,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: "The Master's Vault",
         difficulty: 'hard',
         mind: 'scholar',
-        layout: generateMaze(25, 0.25), // Reduced complexity for better navigation
+        layout: generateMaze(12, 0.2), // Still reduced complexity
         texturePath: brickWallTexture,
       },
     ],
@@ -421,7 +531,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Paint Studio',
         difficulty: 'easy',
         mind: 'artist',
-        layout: generateMaze(12, 0.7),
+        layout: generateMaze(4, 0.35), // Much simpler
         texturePath: stoneWallTexture,
       },
       {
@@ -429,7 +539,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Canvas Room',
         difficulty: 'easy',
         mind: 'artist',
-        layout: generateMaze(14, 0.65),
+        layout: generateMaze(5, 0.3),
         texturePath: stoneWallTexture,
       },
     ],
@@ -439,7 +549,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Gallery Maze',
         difficulty: 'medium',
         mind: 'artist',
-        layout: generateMaze(22, 0.45),
+        layout: generateMaze(8, 0.25),
         texturePath: stoneWallTexture,
       },
       {
@@ -447,7 +557,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Sculpture Garden',
         difficulty: 'medium',
         mind: 'artist',
-        layout: generateMaze(26, 0.4),
+        layout: generateMaze(10, 0.2),
         texturePath: stoneWallTexture,
       },
     ],
@@ -457,7 +567,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Creative Chaos',
         difficulty: 'hard',
         mind: 'artist',
-        layout: generateMaze(32, 0.35),
+        layout: generateMaze(15, 0.18),
         texturePath: stoneWallTexture,
       },
       {
@@ -465,7 +575,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Masterpiece Vault',
         difficulty: 'hard',
         mind: 'artist',
-        layout: generateMaze(38, 0.25),
+        layout: generateMaze(18, 0.15),
         texturePath: stoneWallTexture,
       },
     ],
@@ -477,7 +587,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Case Files',
         difficulty: 'easy',
         mind: 'detective',
-        layout: generateMaze(13, 0.68),
+        layout: generateMaze(4, 0.35),
         texturePath: metalWallTexture,
       },
       {
@@ -485,7 +595,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Evidence Room',
         difficulty: 'easy',
         mind: 'detective',
-        layout: generateMaze(15, 0.62),
+        layout: generateMaze(6, 0.3),
         texturePath: metalWallTexture,
       },
     ],
@@ -495,7 +605,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Investigation Hub',
         difficulty: 'medium',
         mind: 'detective',
-        layout: generateMaze(24, 0.42),
+        layout: generateMaze(9, 0.25),
         texturePath: metalWallTexture,
       },
       {
@@ -503,7 +613,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Crime Scene',
         difficulty: 'medium',
         mind: 'detective',
-        layout: generateMaze(27, 0.38),
+        layout: generateMaze(11, 0.22),
         texturePath: metalWallTexture,
       },
     ],
@@ -513,7 +623,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: 'The Cold Case Vault',
         difficulty: 'hard',
         mind: 'detective',
-        layout: generateMaze(34, 0.32),
+        layout: generateMaze(16, 0.18),
         texturePath: metalWallTexture,
       },
       {
@@ -521,7 +631,7 @@ const MAZE_TEMPLATES: Record<MindType, Record<Difficulty, MazeConfig[]>> = {
         name: "The Sherlock's Mind",
         difficulty: 'hard',
         mind: 'detective',
-        layout: generateMaze(40, 0.28),
+        layout: generateMaze(20, 0.15),
         texturePath: metalWallTexture,
       },
     ],

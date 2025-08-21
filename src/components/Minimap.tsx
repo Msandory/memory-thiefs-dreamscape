@@ -218,25 +218,26 @@ export function Minimap({
         />
       </svg>
       
-      {/* Minimap Legend */}
-      <div className="absolute bottom-1 left-1 text-xs text-white/70">
-        <div className="flex items-center gap-1 mb-1">
-          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-          <span>You</span>
-        </div>
-        <div className="flex items-center gap-1 mb-1">
-          <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-          <span>Orbs</span>
-        </div>
-        <div className="flex items-center gap-1 mb-1">
-          <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-          <span>Guards</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 bg-green-500"></div>
-          <span>Power-ups</span>
-        </div>
-      </div>
+      {/* Minimap Legend - Flat Bottom Row */}
+<div className="absolute bottom-1 left-1 flex items-center gap-4 text-xs text-white/70">
+  <div className="flex items-center gap-1">
+    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+    <span>You</span>
+  </div>
+  <div className="flex items-center gap-1">
+    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+    <span>Orbs</span>
+  </div>
+  <div className="flex items-center gap-1">
+    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+    <span>Guards</span>
+  </div>
+  <div className="flex items-center gap-1">
+    <div className="w-2 h-2 bg-green-500"></div>
+    <span>Power-ups</span>
+  </div>
+</div>
+
     </div>
   );
 }
