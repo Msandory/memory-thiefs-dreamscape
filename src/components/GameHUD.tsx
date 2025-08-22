@@ -30,7 +30,7 @@ export const GameHUD = ({
   onToggleMute,
   timeRemaining,
   timerActive,
-  currentLevel
+  currentLevel,
 }: GameHUDProps) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -125,7 +125,6 @@ export const GameHUD = ({
           </Button>
         </div>
       </div>
-
 
       {/* Game Message Area (no changes needed here) */}
       
