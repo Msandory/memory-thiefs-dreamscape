@@ -31,7 +31,7 @@ const difficultyWeights = {
 const ScoreboardContent = () => {
   const [scores, setScores] = useState<ScoreEntry[]>([]);
 
-  useEffect(() => {
+    useEffect(() => {
     async function fetchScores() {
       try {
         const q = query(collection(db, "scores"), orderBy("time", "asc"), limit(10));
@@ -131,12 +131,10 @@ export const InstructionsScreen = ({ onBack, muted }: InstructionsScreenProps) =
   
   return (
     <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      {/* Main container with controlled height and vertical flex layout */}
       <div 
         className="bg-card/90 border border-primary/30 rounded-lg p-6 sm:p-8 space-y-4 text-center animate-fade-in max-w-2xl w-full flex flex-col" 
         style={{height: '90vh', maxHeight: '800px'}}
       >
-        {/* Tab Navigation (fixed at the top) */}
         <div className="flex-shrink-0 flex justify-center border-b border-primary/20 mb-4">
           <Button 
             variant={activeTab === 'instructions' ? 'ghost' : 'link'} 
@@ -152,7 +150,6 @@ export const InstructionsScreen = ({ onBack, muted }: InstructionsScreenProps) =
           </Button>
         </div>
 
-        {/* Scrollable Content Area */}
         <div className="flex-grow overflow-y-auto pr-3 -mr-3">
           {activeTab === 'instructions' ? (
               <div className="animate-fade-in space-y-6">
@@ -162,18 +159,27 @@ export const InstructionsScreen = ({ onBack, muted }: InstructionsScreenProps) =
                   <div>
                     <p className="font-dream text-lg"><strong>Controls (Desktop):</strong></p>
                     <ul className="list-disc list-inside text-foreground space-y-1">
-                      <li>WASD or Arrow Keys: Move the player</li>
-                      <li>Escape: Pause/Unpause</li>
-                      <li>R: Restart current level</li>
-                      <li>SPACE: Use Thunder Power-up</li>
+                      <li>WASD or Arrow Keys: Move</li>
+                      <li>Hold Shift: Sprint</li>
+                      <li>Mouse: Look Around</li>
+                      <li>Click: Lock Mouse (for camera control)</li>
+                      <li>V: Toggle Camera View (First/Third Person)</li>
+                      <li>SPACE: Use Thunder Power-Up</li>
+                      <li>Escape: Pause Menu</li>
                     </ul>
                   </div>
                   <div>
                     <p className="font-dream text-lg"><strong>Controls (Mobile):</strong></p>
                     <ul className="list-disc list-inside text-foreground space-y-1">
-                      <li>Use the on-screen joystick to move.</li>
-                      <li>Use the on-screen buttons to pause or use abilities.</li>
+                      <li>Left Joystick: Move</li>
+                      <li>Right Joystick: Look Around</li>
+                      <li>Use on-screen buttons for actions (e.g., Use Power-up, Toggle View).</li>
                     </ul>
+                  </div>
+                  {/* CHANGE: Added tip for mouse/joystick sensitivity */}
+                   <div className="!mt-6 p-3 bg-primary/10 rounded-md border border-primary/20">
+                    <p className="font-dream text-lg text-primary"><strong>Control Tip:</strong></p>
+                    <p className="text-foreground">If looking around with the mouse or right joystick feels too slow or fast, adjust the <strong>Mouse Sensitivity</strong> in the settings via the <strong>Pause Menu</strong>.</p>
                   </div>
                   <div>
                     <p className="font-dream text-lg"><strong>Objective:</strong></p>
@@ -193,7 +199,6 @@ export const InstructionsScreen = ({ onBack, muted }: InstructionsScreenProps) =
           ) : <ScoreboardContent />}
         </div>
         
-        {/* Bottom Section (fixed at the bottom) */}
         <div className="flex-shrink-0 pt-4 mt-auto">
           <Button variant="ethereal" size="lg" onClick={() => { playClickSound(); onBack(); }} className="w-full">
             Back to Main Menu

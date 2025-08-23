@@ -7,7 +7,7 @@ import { Difficulty, MindType, MINDS } from '@/config/gameConfig';
 import { getMazes, MazeConfig } from '@/utils/mazeGenerator';
 
 interface MainMenuProps {
-  onStartGame: (name: string, difficulty: Difficulty, mind: MindType, mazeId: string, texturePath: string) => void;
+  onStartGame: (name: string, difficulty: Difficulty, mind: MindType, mazeId: string, texturePath: string,floorTexturePath:string) => void;
   onShowInstructions: () => void;
   muted: boolean;
   savedPlayerName: string;
@@ -17,7 +17,7 @@ interface MainMenuProps {
 export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerName, onClearPlayerName }: MainMenuProps) => {
   const [playerName, setPlayerName] = useState(savedPlayerName);
   const [showNameInput, setShowNameInput] = useState(!savedPlayerName);
-  const [step, setStep] = useState<'name' | 'mind' | 'difficulty' | 'maze'>('name');
+  const [step, setStep] = useState<'name' | 'mind' | 'difficulty' | 'maze'>(savedPlayerName ? 'mind' : 'name');
   const [selectedMind, setSelectedMind] = useState<MindType>('scholar');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [availableMazes, setAvailableMazes] = useState<MazeConfig[]>([]);
@@ -36,6 +36,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
     setPlayerName(savedPlayerName);
     setShowNameInput(!savedPlayerName);
     if (savedPlayerName) setStep('mind');
+    else setStep('name');
   }, [savedPlayerName]);
 
   useEffect(() => {
@@ -72,7 +73,8 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
     playClickSound();
     const selectedMaze = availableMazes.find(maze => maze.id === mazeId);
     const texturePath = selectedMaze?.texturePath || MINDS[selectedMind].texturePath;
-    onStartGame(playerName.trim(), difficulty, selectedMind, mazeId, texturePath);
+    const floorTesxturePath = MINDS[selectedMind].floorTexturePath;
+    onStartGame(playerName.trim(), difficulty, selectedMind, mazeId, texturePath,floorTesxturePath);
   };
 
   const handleChangeName = () => {
@@ -84,12 +86,8 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
   };
 
   return (
-    // CHANGE: The main container is now more flexible. 'items-center' is only applied on medium screens and up.
-    // Padding is added to prevent the card from touching the screen edges.
     <div className="h-screen w-screen bg-background/80 backdrop-blur-sm p-4 flex justify-center md:items-center">
-      {/* CHANGE: The card is now a flex container itself, constrained to the available height. */}
       <div className="bg-card/90 border border-primary/30 rounded-lg animate-fade-in max-w-md w-full h-full flex flex-col">
-        {/* CHANGE: This new inner div contains all the content and is the scrollable area. */}
         <div className="flex-grow overflow-y-auto p-6 md:p-8 space-y-6 text-center">
           <h1 className="font-dream text-5xl font-bold text-primary animate-pulse-glow">
             Memory Thief
@@ -170,7 +168,7 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
           )}
 
           {/* Name Input/Welcome */}
-          {(step === 'name' || (savedPlayerName && !showNameInput && step === 'mind')) && (
+          {step === 'name' && (
             savedPlayerName && !showNameInput ? (
               <div className="space-y-2">
                 <p className="text-lg font-dream text-primary">
@@ -226,19 +224,18 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
               </div>
             )
           )}
+          
+          {/* CHANGE: Instructions button is now always visible */}
+          <Button
+            variant="ethereal"
+            size="lg"
+            onClick={() => { playClickSound(); onShowInstructions(); }}
+            className="w-full"
+          >
+            Instructions & Scoreboard
+          </Button>
 
-          {step === 'name' && (
-            <Button
-              variant="ethereal"
-              size="lg"
-              onClick={() => { playClickSound(); onShowInstructions(); }}
-              className="w-full"
-            >
-              Instructions
-            </Button>
-          )}
-
-          <p className="text-sm text-muted-foreground italic">
+          <p className="text-sm text-muted-foreground italic mt-auto pt-4">
             "The palace holds secrets only the bold can claim..."
           </p>
         </div>

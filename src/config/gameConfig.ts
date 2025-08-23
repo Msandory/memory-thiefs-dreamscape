@@ -4,6 +4,8 @@ import brickWallTexture from '@/assets/Texture/brickWallTexture.avif';
 import stoneWallTexture from '@/assets/Texture/stoneWallTexture.jpg';
 import metalWallTexture from '@/assets/Texture/marbleWallTexture.jpg';
 import glassWallTexture from '@/assets/Texture/glassWallTexture.webp';
+// CHANGE 3: Import a floor texture
+import concreteFloorTexture from '@/assets/Texture/floor.jpg';
 
 export const TILE_SIZE = 100;
 export const MAP_COLS = 20;
@@ -25,6 +27,8 @@ export interface MindConfig {
   theme: string;
   color: string;
   texturePath: string; // Path to the wall texture
+  // CHANGE 3: Add path for floor texture
+  floorTexturePath: string;
 }
 
 export interface MiniChallenge {
@@ -43,6 +47,8 @@ export const MINDS: Record<MindType, MindConfig> = {
     description: 'Navigate the labyrinth of knowledge with precision.',
   
     texturePath: brickWallTexture,
+    // CHANGE 3: Add floor texture path
+    floorTexturePath: concreteFloorTexture,
     theme: "Academic halls with floating books and scrolls",
     color: "hsl(210, 100%, 70%)"
   },
@@ -50,6 +56,8 @@ export const MINDS: Record<MindType, MindConfig> = {
     name: 'Artist',
     description: 'Weave through the chaos of creativity.',
     texturePath: stoneWallTexture,
+    // CHANGE 3: Add floor texture path
+    floorTexturePath: concreteFloorTexture,
     theme: "Paint-splattered rooms with floating canvases",
     color: "hsl(300, 100%, 70%)"
   },
@@ -57,6 +65,8 @@ export const MINDS: Record<MindType, MindConfig> = {
     name: 'Detective',
     description: 'Uncover clues in the maze of mystery.',
     texturePath: metalWallTexture,
+    // CHANGE 3: Add floor texture path
+    floorTexturePath: concreteFloorTexture,
     theme: "Noir-style rooms with case files and evidence",
     color: "hsl(45, 100%, 70%)"
   },
@@ -104,8 +114,8 @@ export const commonConfig = {
   guardianVisionAngle: 190, // Dwegrees: FOV for vision cone on minimap
   powerUpStartLevel: 1,
   orbRadius: 20, // Collision radius for memory orbs (game units)
-  guardianRadius: 25, // Collision radius for guardians (game units) - adjusted!
-  playerRadius: 25, // Collision radius for player (game units) - adjusted!
+  guardianRadius: 10, // Collision radius for guardians (game units) - adjusted!
+  playerRadius: 9, // Collision radius for player (game units) - adjusted!
   guardianAlertRadius: 150, // Actual radius for guard's player detection in GameCanvas3D
   guardianAlertSpeedMultiplier: 1.5, 
   playerBaseSpeed: 8, // Base speed for player movement in game units

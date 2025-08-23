@@ -44,6 +44,7 @@ const Index = () => {
   });
  
   const [selectedTexturePath, setSelectedTexturePath] = useState('');
+  const [selectedFloorTexture, setselectedFloorTexture] = useState('');
   const gameCanvasRef = useRef<{ 
     reset: () => void; 
     retry: () => void; 
@@ -72,7 +73,7 @@ const Index = () => {
   useEffect(() => { localStorage.setItem('muted', JSON.stringify(muted)); }, [muted]);
   useEffect(() => { localStorage.setItem('playerName', playerName); }, [playerName]);
 
-  const handleStartGame = useCallback((name: string, selectedDifficulty: Difficulty, mind: MindType, mazeId: string,texturePath:string) => {
+  const handleStartGame = useCallback((name: string, selectedDifficulty: Difficulty, mind: MindType, mazeId: string,texturePath:string, floorTexture:string) => {
     if (isMobile && screenfull.isEnabled) {
       screenfull.request(); // This makes the entire page go full screen
     }
@@ -89,6 +90,7 @@ const Index = () => {
     setGameMessage(`${name}, you feel the ancient presence...`);
     gameCanvasRef.current?.reset();
     setSelectedTexturePath(texturePath);
+    setselectedFloorTexture(floorTexture);
   }, []);
 
   const handleGameStateChange = useCallback((state: 'playing' | 'paused' | 'gameOver' | 'victory') => {
@@ -215,6 +217,7 @@ const Index = () => {
               gameSettings={gameSettings}
               onSettingsChange={setGameSettings}
               texturePath={selectedTexturePath}
+              floorTexturePath={selectedFloorTexture}
               thirdPerson={isThirdPerson}
               onToggleThirdPerson={setIsThirdPerson}
             />
