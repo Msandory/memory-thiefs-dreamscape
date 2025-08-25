@@ -7,18 +7,12 @@ import glassWallTexture from '@/assets/Texture/glassWallTexture.webp';
 // CHANGE 3: Import a floor texture
 import concreteFloorTexture from '@/assets/Texture/floor.jpg';
 
-export const TILE_SIZE = 100;
+export const TILE_SIZE = 40;
 export const MAP_COLS = 20;
 export const MAP_ROWS = 15;
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export enum PowerUpType {
-  Speed = 'speed',
-  Immunity = 'immunity',
-  Thunder = 'thunder', // Example: clear guardians
-  Timer = 'timer', // Example: add time
-}
-
+export type PowerUpType = 'speed' | 'immunity' | 'thunder' | 'timer';
 export type MindType = 'scholar' | 'artist' | 'detective';
 
 export interface MindConfig {
@@ -26,9 +20,12 @@ export interface MindConfig {
   description: string;
   theme: string;
   color: string;
+<<<<<<< HEAD
   texturePath: string; // Path to the wall texture
   // CHANGE 3: Add path for floor texture
   floorTexturePath: string;
+=======
+>>>>>>> main
 }
 
 export interface MiniChallenge {
@@ -43,16 +40,22 @@ export interface MiniChallenge {
 
 export const MINDS: Record<MindType, MindConfig> = {
   scholar: {
+<<<<<<< HEAD
     name: 'Scholar',
     description: 'Navigate the labyrinth of knowledge with precision.',
   
     texturePath: brickWallTexture,
     // CHANGE 3: Add floor texture path
     floorTexturePath: concreteFloorTexture,
+=======
+    name: "Scholar's Library",
+    description: "Navigate through ancient halls of knowledge",
+>>>>>>> main
     theme: "Academic halls with floating books and scrolls",
     color: "hsl(210, 100%, 70%)"
   },
   artist: {
+<<<<<<< HEAD
     name: 'Artist',
     description: 'Weave through the chaos of creativity.',
     texturePath: stoneWallTexture,
@@ -67,41 +70,48 @@ export const MINDS: Record<MindType, MindConfig> = {
     texturePath: metalWallTexture,
     // CHANGE 3: Add floor texture path
     floorTexturePath: concreteFloorTexture,
+=======
+    name: "Artist's Studio", 
+    description: "Steal memories from a creative sanctuary",
+    theme: "Paint-splattered rooms with floating canvases",
+    color: "hsl(300, 100%, 70%)"
+  },
+  detective: {
+    name: "Detective's Office",
+    description: "Infiltrate a mind of logic and deduction", 
+>>>>>>> main
     theme: "Noir-style rooms with case files and evidence",
     color: "hsl(45, 100%, 70%)"
-  },
- 
+  }
 };
+
 export const difficultyConfigs = {
   easy: { 
-    baseTimer: 60, 
+    baseTimer: 45, 
     timerIncrement: 3, 
-    baseGuardSpeed: 5, 
+    baseGuardSpeed: 0.2, 
     speedIncrement: 0.2, 
     initialGuards: 1, 
     guardsPerLevel: 0.5, 
-    powerUpChance: 0.8,
-   
+    powerUpChance: 0.8 
   },
   medium: { 
     baseTimer: 35, 
     timerIncrement: 2, 
-    baseGuardSpeed: 10, 
+    baseGuardSpeed: 1, 
     speedIncrement: 0.5, 
     initialGuards: 1, 
     guardsPerLevel: 1, 
-    powerUpChance: 0.6,
-   
+    powerUpChance: 0.6 
   },
   hard: { 
     baseTimer: 30, 
     timerIncrement: 1, 
-    baseGuardSpeed: 13, 
+    baseGuardSpeed: 1.3, 
     speedIncrement: 0.6, 
     initialGuards: 2, 
     guardsPerLevel: 1, 
-    powerUpChance: 0.8,
-   
+    powerUpChance: 0.8 
   },
 };
 
@@ -110,6 +120,7 @@ export const commonConfig = {
   initialOrbs: 2,
   orbsPerLevel: 0.5,
   safeDistance: 100,
+<<<<<<< HEAD
   guardianVisionRange: 190, // Distance (in game units) guards can 'see' for the minimap cone
   guardianVisionAngle: 190, // Dwegrees: FOV for vision cone on minimap
   powerUpStartLevel: 1,
@@ -129,6 +140,11 @@ export const commonConfig = {
     timerScoreBonus: 50,
     otherPowerUpScoreBonus: 20,
   }
+=======
+  guardianVisionRange: 100,
+  guardianVisionAngle: Math.PI / 3,
+  powerUpStartLevel: 4,
+>>>>>>> main
 };
 
 export const MINI_CHALLENGES: MiniChallenge[] = [

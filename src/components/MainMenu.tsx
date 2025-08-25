@@ -123,49 +123,49 @@ export const MainMenu = ({ onStartGame, onShowInstructions, muted, savedPlayerNa
             </div>
           )}
 
-          {/* Difficulty Selection */}
-          {step === 'difficulty' && (
-            <div className="space-y-4">
-              <p className="font-dream text-lg text-foreground">Choose Difficulty</p>
-              <div className="space-y-2">
-                {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-                  <Button
-                    key={d}
-                    variant="ethereal"
-                    onClick={() => handleDifficultySelect(d)}
-                    className="capitalize w-full"
-                  >
-                    {d}
-                  </Button>
-                ))}
-              </div>
-              <Button variant="ghost" onClick={() => setStep('mind')} className="w-full">
-                Back
-              </Button>
+        {/* Difficulty Selection */}
+        {step === 'difficulty' && (
+          <div className="space-y-4">
+            <p className="font-dream text-lg text-foreground">Choose Difficulty</p>
+            <div className="space-y-2">
+              {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+                <Button
+                  key={d}
+                  variant="ethereal"
+                  onClick={() => handleDifficultySelect(d)}
+                  className="capitalize w-full"
+                >
+                  {d}
+                </Button>
+              ))}
             </div>
-          )}
+            <Button variant="ghost" onClick={() => setStep('mind')} className="w-full">
+              Back
+            </Button>
+          </div>
+        )}
 
-          {/* Maze Selection */}
-          {step === 'maze' && (
-            <div className="space-y-4">
-              <p className="font-dream text-lg text-foreground">Choose Your Maze</p>
-              <div className="space-y-2">
-                {availableMazes.map((maze) => (
-                  <Button
-                    key={maze.id}
-                    variant="ethereal"
-                    onClick={() => handleMazeSelect(maze.id)}
-                    className="w-full text-left p-4 h-auto"
-                  >
-                    <div className="font-dream">{maze.name}</div>
-                  </Button>
-                ))}
-              </div>
-              <Button variant="ghost" onClick={() => setStep('difficulty')} className="w-full">
-                Back
-              </Button>
+        {/* Maze Selection */}
+        {step === 'maze' && (
+          <div className="space-y-4">
+            <p className="font-dream text-lg text-foreground">Choose Your Maze</p>
+            <div className="space-y-2">
+              {availableMazes.map((maze) => (
+                <Button
+                  key={maze.id}
+                  variant="ethereal"
+                  onClick={() => handleMazeSelect(maze.id)}
+                  className="w-full text-left p-4 h-auto"
+                >
+                  <div className="font-dream">{maze.name}</div>
+                </Button>
+              ))}
             </div>
-          )}
+            <Button variant="ghost" onClick={() => setStep('difficulty')} className="w-full">
+              Back
+            </Button>
+          </div>
+        )}
 
           {/* Name Input/Welcome */}
           {step === 'name' && (
