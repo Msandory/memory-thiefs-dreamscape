@@ -68,8 +68,9 @@
     "@tailwindcss/typography": "^0.5.15",
     "@types/howler": "^2.2.12",
     "@types/node": "^22.5.5",
-    "@types/react": "^18.3.3",
+    "@types/react": "^18.3.24",
     "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.179.0",
     "@vitejs/plugin-react-swc": "^3.5.0",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.9.0",
@@ -82,5 +83,18 @@
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
     "vite": "^5.4.1"
-  }
+  },
+  "description": "**URL**:https://memorytheftgame.netlify.app",
+  "main": "eslint.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Msandory/memory-thiefs-dreamscape.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Msandory/memory-thiefs-dreamscape/issues"
+  },
+  "homepage": "https://github.com/Msandory/memory-thiefs-dreamscape#readme"
 }
